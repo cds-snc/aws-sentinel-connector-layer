@@ -9,7 +9,7 @@ module "gh_oidc_roles" {
     {
       name      = local.admin_role
       repo_name = "aws-sentinel-connector-layer"
-      claim     = "ref:refs/heads/main"
+      claim     = "*"
     }
   ]
 
