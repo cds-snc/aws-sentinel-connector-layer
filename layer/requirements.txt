@@ -1,0 +1,3 @@
+boto3==1.18.31
+logzero==1.7.0
+requests==2.26.0
