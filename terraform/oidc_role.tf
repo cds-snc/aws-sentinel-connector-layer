@@ -2,7 +2,7 @@ locals {
   admin_role = "AWSSentinelConnectorLayerTerraformAdministratorRole"
 }
 
-# Role used by Terraform to manage all satellite accounts
+# Role used by Terraform and GitHub actions
 module "gh_oidc_roles" {
   source = "github.com/cds-snc/terraform-modules?ref=v1.0.3//gh_oidc_role"
   roles = [

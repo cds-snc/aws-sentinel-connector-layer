@@ -54,7 +54,7 @@ jobs:
           && mv conftest /usr/local/bin \
           && rm "conftest_${{ env.CONFTEST_VERSION }}_Linux_x86_64.tar.gz" checksums.txt
 
-      - name: configure aws credentials using OIDC
+      - name: Configure aws credentials using OIDC
         uses: aws-actions/configure-aws-credentials@master
         with:
           role-to-assume: arn:aws:iam::283582579564:role/AWSSentinelConnectorLayerTerraformAdministratorRole
