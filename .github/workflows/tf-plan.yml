@@ -61,6 +61,11 @@ jobs:
           role-session-name: SentinelGitHubActions
           aws-region: "ca-central-1"
 
+      - name: Build layer
+        working-directory: layer
+        run: |
+          make build
+
       - name: Terraform Plan ${{ matrix.module }}
         uses: cds-snc/terraform-plan@v2
         with:

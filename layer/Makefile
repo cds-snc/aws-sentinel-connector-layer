@@ -1,4 +1,12 @@
-.PHONY: dev fmt install lint migrations test fmt-ci lint-ci build install-dev seed
+.PHONY: build fmt install lint migrations test fmt-ci lint-ci install-dev
+
+build:
+	rm -f ../terraform/layer.zip &&\
+	rm -rf package &&\
+	pip3 install --target ./package/python/lib/python3.9/site-packages -r requirements.txt &&\
+	cp connector.py package/python/lib/python3.9/site-packages/ &&\
+	cd package &&\
+	zip -r ../../terraform/layer.zip .
 
 fmt:
 	black . $(ARGS)

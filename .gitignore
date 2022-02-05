@@ -199,3 +199,5 @@ typings/
 .terragrunt-cache
 .terraform
 *.PublishSettings
+
+package

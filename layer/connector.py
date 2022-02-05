@@ -238,9 +238,9 @@ def post_data(customer_id, shared_key, body, log_type):
 
     response = requests.post(uri, data=body, headers=headers)
     if response.status_code >= 200 and response.status_code <= 299:
-        log.info("Response code: {}".format(response.status_code))
+        log.info(f"Response code: {response.status_code}, log type: {log_type}")
         return True
     else:
         print(response.text)
-        log.error("Response code: {}".format(response.status_code))
+        log.error(f"Response code: {response.status_code}, log type: {log_type}")
         return False
