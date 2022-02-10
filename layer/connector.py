@@ -1,5 +1,4 @@
 import base64
-from curses import raw
 import boto3
 import datetime
 import gzip
