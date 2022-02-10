@@ -1,3 +1,4 @@
+import gzip
 import os
 import connector
 from unittest.mock import patch
@@ -9,7 +10,10 @@ shared_key = "dGVzdCBrZXk="
 
 
 def load_fixture(name):
-    return open(os.path.join(os.path.dirname(__file__), "fixtures", name), "rb")
+    data = open(os.path.join(os.path.dirname(__file__), "fixtures", name), "rb")
+    if name.endswith(".gz"):
+        data = gzip.open(data, mode="rt", encoding="utf8", errors="ignore")
+    return data
 
 
 @patch.dict(os.environ, {"LOG_TYPE": "foo", "SHARED_KEY": "foo"}, clear=True)

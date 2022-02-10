@@ -1,4 +1,5 @@
 import base64
+from curses import raw
 import boto3
 import datetime
 import gzip
@@ -49,6 +50,12 @@ def handle_log(event):
                     f"Downloaded {record['s3']['object']['key']} from {record['s3']['bucket']['name']}"
                 )
                 rawbody.seek(0)
+                if record["s3"]["object"]["key"].endswith(".gz") or record["s3"][
+                    "object"
+                ]["key"].endswith(".gzip"):
+                    rawbody = gzip.open(
+                        rawbody, mode="rt", encoding="utf8", errors="ignore"
+                    )
             except Exception as err:
                 log.error(
                     f"Error downloading {record['s3']['object']['key']} from {record['s3']['bucket']['name']}"
@@ -107,8 +114,7 @@ def handle_log(event):
     return True
 
 
-def parse_alblog(rawbody):
-    body = gzip.open(rawbody, mode="rt", encoding="utf8", errors="ignore")
+def parse_alblog(body):
     headers = [
         "type",
         "time",
@@ -156,8 +162,7 @@ def parse_alblog(rawbody):
     ]
 
 
-def parse_cloudtrail(rawbody):
-    body = gzip.open(rawbody, mode="rt", encoding="utf8", errors="ignore")
+def parse_cloudtrail(body):
     lines = []
     payload = json.loads(body.read())
     for line in payload["Records"]:
@@ -167,19 +172,17 @@ def parse_cloudtrail(rawbody):
     return lines
 
 
-def parse_guardduty(rawbody):
-    body = gzip.open(rawbody, mode="rt", encoding="utf8", errors="ignore")
+def parse_guardduty(body):
     return [json.loads(jline) for jline in body.read().splitlines()]
 
 
-def parse_vpcflowlogs(rawbody):
-    body = gzip.open(rawbody, mode="rt", encoding="utf8", errors="ignore")
+def parse_vpcflowlogs(body):
     headers, *lines = body.read().splitlines()
     return [dict(zip(headers.split(" "), line.split(" "))) for line in lines]
 
 
-def parse_waf(rawbody):
-    return [json.loads(jline) for jline in rawbody.read().splitlines()]
+def parse_waf(body):
+    return [json.loads(jline) for jline in body.read().splitlines()]
 
 
 def build_signature(
