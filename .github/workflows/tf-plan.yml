@@ -33,7 +33,7 @@ jobs:
         uses: actions/checkout@v2
 
       - name: setup terraform tools
-        uses: cds-snc/terraform-tools-setup@412d4052d90412a17f86a3509b6a57c7a615ceda
+        uses: cds-snc/terraform-tools-setup@v1
 
       - name: Configure aws credentials using OIDC
         uses: aws-actions/configure-aws-credentials@master
