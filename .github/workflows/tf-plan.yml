@@ -8,7 +8,7 @@ on:
 env:
   AWS_REGION: ca-central-1
   TERRAFORM_VERSION: 1.0.3
-  TERRAGRUNT_VERSION: v0.31.1
+  TERRAGRUNT_VERSION: 0.31.1
   CONFTEST_VERSION: 0.27.0
 
 permissions:
@@ -29,11 +29,11 @@ jobs:
 
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v2
-
       - name: setup terraform tools
         uses: cds-snc/terraform-tools-setup@82586e7b242a8035c7d02e7519341eb9348fe195
+
+      - name: Checkout
+        uses: actions/checkout@v2
 
       - name: Configure aws credentials using OIDC
         uses: aws-actions/configure-aws-credentials@master
