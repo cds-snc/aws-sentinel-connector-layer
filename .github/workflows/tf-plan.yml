@@ -29,11 +29,11 @@ jobs:
 
     runs-on: ubuntu-latest
     steps:
-      - name: setup terraform tools
-        uses: cds-snc/terraform-tools-setup@82586e7b242a8035c7d02e7519341eb9348fe195
-
       - name: Checkout
         uses: actions/checkout@v2
+
+      - name: setup terraform tools
+        uses: cds-snc/terraform-tools-setup@d3116e952e2643f543202fd425dad95d4f21cada
 
       - name: Configure aws credentials using OIDC
         uses: aws-actions/configure-aws-credentials@master
