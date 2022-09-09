@@ -85,21 +85,7 @@ def test_handle_log_is_a_digest():
 )
 def test_handle_log_is_a_config():
     event = {
-        "Records": [
-            {"s3": {"bucket": {"name": "foo"}, "object": {"key": "foo/Config/bar"}}}
-        ]
-    }
-    assert connector.handle_log(event) is True
-
-
-@patch.dict(
-    os.environ,
-    {"CUSTOMER_ID": "foo", "SHARED_KEY": "foo"},
-    clear=True,
-)
-def test_handle_log_is_a_config():
-    event = {
-        "Records": [{"s3": {"bucket": {"name": "foo"}, "object": {"key": "Config"}}}]
+        "Records": [{"s3": {"bucket": {"name": "foo"}, "object": {"key": "foo/Config/bar"}}}]
     }
     assert connector.handle_log(event) is True
 
