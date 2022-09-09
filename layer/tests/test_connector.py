@@ -72,7 +72,21 @@ def test_handle_log_fail_to_download_object():
 def test_handle_log_is_a_digest():
     event = {
         "Records": [
-            {"s3": {"bucket": {"name": "foo"}, "object": {"key": "CloudTrail-Digest"}}}
+            {"s3": {"bucket": {"name": "foo"}, "object": {"key": "foo/CloudTrail-Digest/bar"}}}
+        ]
+    }
+    assert connector.handle_log(event) is True
+
+
+@patch.dict(
+    os.environ,
+    {"CUSTOMER_ID": "foo", "SHARED_KEY": "foo"},
+    clear=True,
+)
+def test_handle_log_is_a_config():
+    event = {
+        "Records": [
+            {"s3": {"bucket": {"name": "foo"}, "object": {"key": "foo/Config/bar"}}}
         ]
     }
     assert connector.handle_log(event) is True
