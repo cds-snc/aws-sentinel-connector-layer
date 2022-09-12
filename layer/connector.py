@@ -37,7 +37,7 @@ def handle_log(event):
         if "s3" in record:
 
             # Ignore records that are in the exclusion list
-            if record["s3"]["object"]["key"] in exclusion_list:
+            if any(s in record["s3"]["object"]["key"] for s in exclusion_list):
                 continue
 
             try:
@@ -90,6 +90,7 @@ def handle_log(event):
                 log_type = "AWSWebApplicationFirewall"
 
             if lines:
+                log.info(f"Posting {len(lines)} lines")
                 post_data(customer_id, shared_key, json.dumps(lines), log_type)
                 return True
 
