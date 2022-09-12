@@ -90,6 +90,7 @@ def handle_log(event):
                 log_type = "AWSWebApplicationFirewall"
 
             if lines:
+                log.info(f"Posting {len(lines)} lines")
                 post_data(customer_id, shared_key, json.dumps(lines), log_type)
                 return True
 
