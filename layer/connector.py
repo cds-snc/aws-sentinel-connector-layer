@@ -67,6 +67,7 @@ def handle_log(event):
             # CloudTrail log
             if "CloudTrail" in record["s3"]["object"]["key"]:
                 lines = parse_cloudtrail(rawbody)
+                log_ops_user(rawbody)
                 log_type = "AWSCloudTrail"
 
             # AWS ALB log
@@ -162,6 +163,15 @@ def parse_alblog(body):
     ]
 
 
+def log_ops_user(body):
+    body.seek(0)
+    payload = body.read()
+    if "ops1" in payload or "ops2" in payload:
+        log.warning("Ops user found in CloudTrail log")
+        return True
+    return False
+
+
 def parse_cloudtrail(body):
     lines = []
     payload = json.loads(body.read())
@@ -244,6 +254,6 @@ def post_data(customer_id, shared_key, body, log_type):
         log.info(f"Response code: {response.status_code}, log type: {log_type}")
         return True
     else:
-        print(response.text)
+        log.error(response.text)
         log.error(f"Response code: {response.status_code}, log type: {log_type}")
         return False

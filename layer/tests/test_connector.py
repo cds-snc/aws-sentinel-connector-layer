@@ -1,5 +1,6 @@
-import gzip
+import io
 import os
+import pytest
 import connector
 from unittest.mock import patch
 
@@ -11,8 +12,6 @@ shared_key = "dGVzdCBrZXk="
 
 def load_fixture(name):
     data = open(os.path.join(os.path.dirname(__file__), "fixtures", name), "rb")
-    if name.endswith(".gz"):
-        data = gzip.open(data, mode="rt", encoding="utf8", errors="ignore")
     return data
 
 
@@ -126,7 +125,7 @@ def test_handle_log_succeeds_empty_records(
 def test_handle_log_succeeds_with_cloudtrail_data(mock_post_data, mock_io, mock_boto3):
     event = {
         "Records": [
-            {"s3": {"bucket": {"name": "foo"}, "object": {"key": "CloudTrail"}}}
+            {"s3": {"bucket": {"name": "foo"}, "object": {"key": "CloudTrail.json.gz"}}}
         ]
     }
     mock_io.BytesIO.return_value = load_fixture("cloudtrail.json.gz")
@@ -145,7 +144,14 @@ def test_handle_log_succeeds_with_cloudtrail_data(mock_post_data, mock_io, mock_
 @patch("connector.post_data")
 def test_handle_log_succeeds_with_guard_duty_data(mock_post_data, mock_io, mock_boto3):
     event = {
-        "Records": [{"s3": {"bucket": {"name": "foo"}, "object": {"key": "GuardDuty"}}}]
+        "Records": [
+            {
+                "s3": {
+                    "bucket": {"name": "foo"},
+                    "object": {"key": "GuardDuty.jsonl.json.gz"},
+                }
+            }
+        ]
     }
     mock_io.BytesIO.return_value = load_fixture("guardduty.jsonl.json.gz")
     mock_post_data.return_value = True
@@ -166,7 +172,12 @@ def test_handle_log_succeeds_with_vpc_flow_logs_data(
 ):
     event = {
         "Records": [
-            {"s3": {"bucket": {"name": "foo"}, "object": {"key": "vpcflowlogs"}}}
+            {
+                "s3": {
+                    "bucket": {"name": "foo"},
+                    "object": {"key": "vpcflowlogs.jsonl.json.gz"},
+                }
+            }
         ]
     }
     mock_io.BytesIO.return_value = load_fixture("vpcflowlogs.log.gz")
@@ -191,7 +202,7 @@ def test_handle_log_succeeds_with_application_loadbalancer_logs_data(
             {
                 "s3": {
                     "bucket": {"name": "foo"},
-                    "object": {"key": "elasticloadbalancing"},
+                    "object": {"key": "elasticloadbalancing.jsonl.json.gz"},
                 }
             }
         ]
@@ -257,6 +268,15 @@ def test_handle_log_succeeds_with_application_log_data(mock_post_data):
     mock_post_data.return_value = True
     assert connector.handle_log(event) is True
     assert mock_post_data.call_count == 1
+
+
+@pytest.mark.parametrize(
+    "test_input,expected", [("foo", False), ("fooops1bar", True), ("fooops2bar", True)]
+)
+def test_log_ops_user(test_input, expected):
+    output = io.StringIO()
+    output.write(test_input)
+    assert connector.log_ops_user(output) == expected
 
 
 def test_build_signature():
