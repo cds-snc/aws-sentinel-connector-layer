@@ -194,6 +194,33 @@ def test_handle_log_succeeds_with_vpc_flow_logs_data(
 @patch("connector.boto3")
 @patch("connector.io")
 @patch("connector.post_data")
+def test_handle_log_succeeds_with_vpc_dns_query_logs_data(
+    mock_post_data, mock_io, mock_boto3
+):
+    event = {
+        "Records": [
+            {
+                "s3": {
+                    "bucket": {"name": "foo"},
+                    "object": {"key": "vpcdnsquerylogs.log.gz"},
+                }
+            }
+        ]
+    }
+    mock_io.BytesIO.return_value = load_fixture("vpcdnsquery.log.gz")
+    mock_post_data.return_value = True
+    assert connector.handle_log(event) is True
+    assert mock_post_data.call_count == 1
+
+
+@patch.dict(
+    os.environ,
+    {"CUSTOMER_ID": "foo", "SHARED_KEY": "foo"},
+    clear=True,
+)
+@patch("connector.boto3")
+@patch("connector.io")
+@patch("connector.post_data")
 def test_handle_log_succeeds_with_application_loadbalancer_logs_data(
     mock_post_data, mock_io, mock_boto3
 ):
