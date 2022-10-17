@@ -80,6 +80,11 @@ def handle_log(event):
                 lines = parse_guardduty(rawbody)
                 log_type = "AWSGuardDuty"
 
+            # VPC DNS query log
+            if "vpcdnsquerylogs" in record["s3"]["object"]["key"]:
+                lines = parse_vpcdnsquerylogs(rawbody)
+                log_type = "AWSVPCDNSQueryLogs"
+
             # VPC Flow log
             if "vpcflowlogs" in record["s3"]["object"]["key"]:
                 lines = parse_vpcflowlogs(rawbody)
@@ -183,6 +188,10 @@ def parse_cloudtrail(body):
 
 
 def parse_guardduty(body):
+    return [json.loads(jline) for jline in body.read().splitlines()]
+
+
+def parse_vpcdnsquerylogs(body):
     return [json.loads(jline) for jline in body.read().splitlines()]
 
 
