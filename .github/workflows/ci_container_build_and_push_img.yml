@@ -1,4 +1,4 @@
-name: Build containers CI
+name: Build container and push CI
 
 on:
   push:
@@ -42,3 +42,11 @@ jobs:
       - name: Push docker image to AWS ECR
         run: |
           docker push $REGISTRY/$REPOSITORY:$GITHUB_SHA
+
+      - name: Generate $REPOSITORY/docker SBOM
+        uses: cds-snc/security-tools/.github/actions/generate-sbom@4c6b386722985552f3f008d04279a3f01402cc35 # tag=v1
+        with:
+          dependency_track_api_key: ${{ secrets.DEPENDENCY_TRACK_API_KEY }}
+          docker_image: $REGISTRY/$REPOSITORY:$GITHUB_SHA
+          project_name: aws-sentinel-conector-layer/docker
+          project_type: docker

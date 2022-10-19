@@ -1,0 +1,30 @@
+name: Build container
+
+on:
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+      
+      - name: Build docker image
+        working-directory: ./layer
+        run: |
+          docker build -t aws-sentinel-connector:test .
+
+      - name: Generate $REPOSITORY/docker SBOM
+        uses: cds-snc/security-tools/.github/actions/generate-sbom@4c6b386722985552f3f008d04279a3f01402cc35 # tag=v1
+        with:
+          dependency_track_api_key: ${{ secrets.DEPENDENCY_TRACK_API_KEY }}
+          docker_image: $REGISTRY/$REPOSITORY:$GITHUB_SHA
+          project_name: aws-sentinel-conector-layer/docker
+          project_type: docker
