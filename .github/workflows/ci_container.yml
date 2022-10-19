@@ -1,0 +1,48 @@
+name: Build containers CI
+
+on:
+  push:
+    branches:
+     - main
+
+env:
+  GITHUB_SHA: ${{ github.sha }}
+  REPOSITORY: aws-sentinel-connector
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      - name: Configure aws credentials using OIDC
+        uses: aws-actions/configure-aws-credentials@master
+        with:
+          role-to-assume: arn:aws:iam::283582579564:role/AWSSentinelConnectorLayerTerraformReadOnlyRole
+          role-session-name: SentinelGitHubActions
+          aws-region: "us-east-1"
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v1
+        with:
+          registry-type: public
+
+      - name: Set REGISTRY variable
+        id: set-registry-var
+        run: |
+          echo "REGISTRY=${{ steps.login-ecr.outputs.registry }}" >> $GITHUB_ENV
+
+      - name: Build docker image
+        working-directory: ./layer
+        run: |
+          docker build -t $REGISTRY/$REPOSITORY:$GITHUB_SHA .
+
+      - name: Push docker image to AWS ECR
+        run: |
+          docker push $REGISTRY/$REPOSITORY:$GITHUB_SHA
