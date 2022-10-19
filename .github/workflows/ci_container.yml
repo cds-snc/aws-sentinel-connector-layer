@@ -34,7 +34,6 @@ jobs:
           registry-type: public
 
       - name: Set REGISTRY variable
-        id: set-registry-var
         run: |
           echo "REGISTRY=${{ steps.login-ecr.outputs.registry }}" >> $GITHUB_ENV
 
