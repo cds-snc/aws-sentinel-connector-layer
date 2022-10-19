@@ -7,8 +7,6 @@ on:
 
 env:
   GITHUB_SHA: ${{ github.sha }}
-  REPOSITORY: aws-sentinel-connector
-  REGISTRY: public.ecr.aws/cds-snc
 
 permissions:
   id-token: write
@@ -26,10 +24,10 @@ jobs:
         run: |
           docker build -t aws-sentinel-connector:test .
 
-      - name: Generate $REPOSITORY/docker SBOM
+      - name: Generate SBOM
         uses: cds-snc/security-tools/.github/actions/generate-sbom@4c6b386722985552f3f008d04279a3f01402cc35 # tag=v1
         with:
           dependency_track_api_key: ${{ secrets.DEPENDENCY_TRACK_API_KEY }}
-          docker_image: $REGISTRY/$REPOSITORY:$GITHUB_SHA
+          docker_image: aws-sentinel-connector:test
           project_name: aws-sentinel-conector-layer/docker
           project_type: docker
