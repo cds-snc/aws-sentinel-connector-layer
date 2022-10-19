@@ -5,6 +5,11 @@ on:
     branches:
       - main
 
+env:
+  GITHUB_SHA: ${{ github.sha }}
+  REPOSITORY: aws-sentinel-connector
+  REGISTRY: public.ecr.aws/cds-snc
+
 permissions:
   id-token: write
   contents: read
