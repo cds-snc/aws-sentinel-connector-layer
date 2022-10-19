@@ -8,6 +8,7 @@ on:
 env:
   GITHUB_SHA: ${{ github.sha }}
   REPOSITORY: aws-sentinel-connector
+  REGISTRY: public.ecr.aws/cds-snc
 
 permissions:
   id-token: write
@@ -32,10 +33,6 @@ jobs:
         uses: aws-actions/amazon-ecr-login@v1
         with:
           registry-type: public
-
-      - name: Set REGISTRY variable
-        run: |
-          echo "REGISTRY=${{ steps.login-ecr.outputs.registry }}" >> $GITHUB_ENV
 
       - name: Build docker image
         working-directory: ./layer
