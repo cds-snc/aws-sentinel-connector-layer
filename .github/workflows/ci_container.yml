@@ -23,7 +23,7 @@ jobs:
       - name: Configure aws credentials using OIDC
         uses: aws-actions/configure-aws-credentials@master
         with:
-          role-to-assume: arn:aws:iam::283582579564:role/AWSSentinelConnectorLayerTerraformReadOnlyRole
+          role-to-assume: arn:aws:iam::283582579564:role/AWSSentinelConnectorLayerTerraformAdministratorRole
           role-session-name: SentinelGitHubActions
           aws-region: "us-east-1"
 
@@ -34,7 +34,6 @@ jobs:
           registry-type: public
 
       - name: Set REGISTRY variable
-        id: set-registry-var
         run: |
           echo "REGISTRY=${{ steps.login-ecr.outputs.registry }}" >> $GITHUB_ENV
 
