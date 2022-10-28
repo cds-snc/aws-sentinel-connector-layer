@@ -24,7 +24,7 @@ jobs:
       - name: Configure aws credentials using OIDC
         uses: aws-actions/configure-aws-credentials@master
         with:
-          role-to-assume: arn:aws:iam::283582579564:role/AWSSentinelConnectorLayerTerraformAdministratorRole
+          role-to-assume: arn:aws:iam::283582579564:role/aws-sentinel-connector-layer-apply
           role-session-name: SentinelGitHubActions
           aws-region: "us-east-1"
 
