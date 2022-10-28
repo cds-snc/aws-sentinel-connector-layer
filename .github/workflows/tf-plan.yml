@@ -48,7 +48,7 @@ jobs:
           make build
 
       - name: Terraform Plan ${{ matrix.module }}
-        uses: cds-snc/terraform-plan@v2
+        uses: cds-snc/terraform-plan@v3
         with:
           comment-delete: true
           comment-title: Plan for ${{ matrix.module }}
