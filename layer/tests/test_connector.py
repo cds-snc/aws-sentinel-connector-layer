@@ -286,6 +286,23 @@ def test_handle_log_succeeds_with_securityhub_data(mock_post_data):
     clear=True,
 )
 @patch("connector.post_data")
+def test_handle_log_succeeds_with_cloud_watch_log(mock_post_data):
+    event = {
+        "awslogs": {
+            "data": "H4sIAAAAAAAAAK2QTWvcMBCG/4oRPS5Y8yGNlFMd6iyBtpSub+lStLE2GNb2xvY2lDT/vbMNvRT21MAgDe+MZh69z6bP85wecvPzmM2V+VA11fdP9WZTrWuzMuPTkCeVLYhEGxEEncqH8WE9jaejVsr0NJeH1O/aVN6M42txs0w59VpFi1gClHrevftYNfWm2e4RwAcPFFrHMYe4T+SSQ/IRiGmnI+bTbr6fuuPSjcNNd1jyNJurO3N+fvt5bbZ/ltQ/8rCc9WfTtbqLBJGsRHJWiNmxQxZg79Fb4hDBWw/BegKHEZkR2LkgpPuWTl1YUq8fAq8YbL11AXD11x0dX7V9NxTVl9tiyo8nbS/WdVNcV1+L/Ti+36XpV5pbjcfX69tgXlb/kvnzWmInjiITUhSHEh0DCgBacqyJU0wQzeIFMk8kb02mRkXPHMiqcd4LCgd0appixhCDiApeXdR+CHCJTJjenCwKiyBbDNaSBoH1apOm0YoEL4BMYiGKgJULZOrv/5JtX34DDTXoyi0DAAA="
+        }
+    }
+    mock_post_data.return_value = True
+    assert connector.handle_log(event) is True
+    assert mock_post_data.call_count == 1
+
+
+@patch.dict(
+    os.environ,
+    {"CUSTOMER_ID": "foo", "SHARED_KEY": "foo"},
+    clear=True,
+)
+@patch("connector.post_data")
 def test_handle_log_succeeds_with_application_log_data(mock_post_data):
     event = {
         "application_log": {
