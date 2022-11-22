@@ -110,6 +110,14 @@ def handle_log(event):
         post_data(customer_id, shared_key, json.dumps(line), log_type)
         return True
 
+    # If CloudWatch Subscription
+    if "awslogs" in event:
+        data = event["awslogs"]["data"]
+        payload = gzip.decompress(base64.b64decode(data))
+        log_type = "AWSCloudWatchLog"
+        post_data(customer_id, shared_key, payload, log_type)
+        return True
+
     # If application_log
     if "application_log" in event:
         line = event["application_log"]
