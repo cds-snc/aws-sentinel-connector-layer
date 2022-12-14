@@ -29,7 +29,7 @@ jobs:
 
       - name: Setup python
         if: ${{ steps.filter.outputs.changes == 'true' }}
-        uses: actions/setup-python@v2
+        uses: actions/setup-python@2c3dd9e7e29afd70cc0950079bde6c979d1f69f9 # v4.3.1
         with:
           python-version: "3.9"
 
