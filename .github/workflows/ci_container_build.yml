@@ -10,7 +10,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@93ea575cb5d8a053eaa0ac8fa3b40d7e05a33cc8 # v3.1.0
       
       - name: Build docker image
         working-directory: ./layer
@@ -18,7 +18,7 @@ jobs:
           docker build -t aws-sentinel-connector:test .
 
       - name: Generate SBOM
-        uses: cds-snc/security-tools/.github/actions/generate-sbom@4c6b386722985552f3f008d04279a3f01402cc35 # tag=v1
+        uses: cds-snc/security-tools/.github/actions/generate-sbom@f0d609b2a8f51dbb4b1760b02a35fb1aadbae7f1 # v1.1.6
         with:
           dependency_track_api_key: ${{ secrets.DEPENDENCY_TRACK_API_KEY }}
           docker_image: aws-sentinel-connector:test
