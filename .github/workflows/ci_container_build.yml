@@ -16,11 +16,3 @@ jobs:
         working-directory: ./layer
         run: |
           docker build -t aws-sentinel-connector:test .
-
-      - name: Generate SBOM
-        uses: cds-snc/security-tools/.github/actions/generate-sbom@4368a5486da1f0bb698ffe717687612d4231c6cd # v1.1.7
-        with:
-          dependency_track_api_key: ${{ secrets.DEPENDENCY_TRACK_API_KEY }}
-          docker_image: aws-sentinel-connector:test
-          project_name: aws-sentinel-conector-layer/docker
-          project_type: docker
