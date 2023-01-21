@@ -44,7 +44,7 @@ jobs:
           docker push $REGISTRY/$REPOSITORY:$GITHUB_SHA
 
       - name: Generate $REPOSITORY/docker SBOM
-        uses: cds-snc/security-tools/.github/actions/generate-sbom@a38917b147dfc8f086abcf81529e3c12f26529b8 # v2.1.0
+        uses: cds-snc/security-tools/.github/actions/generate-sbom@19c655b47ec24d168ecbc701cee18701ab55f071 # v2.1.1
         with:
           docker_image: "${{ env.REGISTRY }}/${{ env.REPOSITORY }}:${{ env.GITHUB_SHA }}"
           dockerfile_path: "layer/Dockerfile"
