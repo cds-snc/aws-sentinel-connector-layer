@@ -16,7 +16,6 @@ log = logzero.logger
 
 
 def handle_log(event):
-
     exclusion_list = [
         "CloudTrail-Digest",
         "Config",
@@ -35,7 +34,6 @@ def handle_log(event):
     # S3 events
     for record in event.get("Records", []):
         if "s3" in record:
-
             # Ignore records that are in the exclusion list
             if any(s in record["s3"]["object"]["key"] for s in exclusion_list):
                 continue
@@ -94,6 +92,11 @@ def handle_log(event):
             if "aws-waf-logs" in record["s3"]["object"]["key"]:
                 lines = parse_waf(rawbody)
                 log_type = "AWSWebApplicationFirewall"
+
+            # CloudQuery log
+            if "cloudquery" in record["s3"]["object"]["key"]:
+                lines = json.loads(rawbody)
+                log_type = "CloudQuery"
 
             if lines:
                 log.info(f"Posting {len(lines)} lines")
@@ -266,7 +269,7 @@ def post_data(customer_id, shared_key, body, log_type):
         "x-ms-date": rfc1123date,
     }
 
-    response = requests.post(uri, data=body, headers=headers)
+    response = requests.post(uri, data=body, headers=headers, timeout=(10))
     if response.status_code >= 200 and response.status_code <= 299:
         log.info(f"Response code: {response.status_code}, log type: {log_type}")
         return True
