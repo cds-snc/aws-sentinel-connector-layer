@@ -95,7 +95,7 @@ def handle_log(event):
 
             # CloudQuery log
             if "cloudquery" in record["s3"]["object"]["key"]:
-                lines = json.loads(rawbody.read())
+                lines = parse_cloudquery(rawbody)
                 log_type = "CloudQuery"
 
             if lines:
@@ -212,6 +212,10 @@ def parse_vpcflowlogs(body):
 
 
 def parse_waf(body):
+    return [json.loads(jline) for jline in body.read().splitlines()]
+
+
+def parse_cloudquery(body):
     return [json.loads(jline) for jline in body.read().splitlines()]
 
 
