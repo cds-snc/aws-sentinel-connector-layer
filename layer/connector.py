@@ -95,7 +95,7 @@ def handle_log(event):
 
             # CloudQuery log
             if "cloudquery" in record["s3"]["object"]["key"]:
-                lines = json.loads(rawbody)
+                lines = json.loads(rawbody.read())
                 log_type = "CloudQuery"
 
             if lines:
