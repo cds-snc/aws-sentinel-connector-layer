@@ -95,6 +95,11 @@ def handle_log(event):
                 lines = parse_waf(rawbody)
                 log_type = "AWSWebApplicationFirewall"
 
+            #CloudQuery log
+            if "cloudquery" in record["s3"]["object"]["key"]:
+                lines = json.loads(rawbody)
+                log_type = "CloudQuery"
+
             if lines:
                 log.info(f"Posting {len(lines)} lines")
                 post_data(customer_id, shared_key, json.dumps(lines), log_type)
