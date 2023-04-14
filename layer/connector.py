@@ -16,7 +16,6 @@ log = logzero.logger
 
 
 def handle_log(event):
-
     exclusion_list = [
         "CloudTrail-Digest",
         "Config",
@@ -35,7 +34,6 @@ def handle_log(event):
     # S3 events
     for record in event.get("Records", []):
         if "s3" in record:
-
             # Ignore records that are in the exclusion list
             if any(s in record["s3"]["object"]["key"] for s in exclusion_list):
                 continue
@@ -95,7 +93,7 @@ def handle_log(event):
                 lines = parse_waf(rawbody)
                 log_type = "AWSWebApplicationFirewall"
 
-            #CloudQuery log
+            # CloudQuery log
             if "cloudquery" in record["s3"]["object"]["key"]:
                 lines = json.loads(rawbody)
                 log_type = "CloudQuery"
