@@ -95,7 +95,9 @@ def handle_log(event):
 
             # CloudQuery log
             if "cloudquery" in record["s3"]["object"]["key"]:
-                lines = [{"metadata_table": record["s3"]["object"]["key"].split("/")[1]}]
+                lines = [
+                    {"metadata_table": record["s3"]["object"]["key"].split("/")[1]}
+                ]
                 lines.append(parse_cloudquery(rawbody))
                 log_type = "CloudQuery"
             if lines:
