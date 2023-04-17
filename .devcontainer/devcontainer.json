@@ -3,7 +3,7 @@
 {
 	"name": "AWS Sentinel connection layer",
 	"image": "mcr.microsoft.com/vscode/devcontainers/python:3",
-	"workspaceFolder": "/workspace",
+	"workspaceFolder": "/workspaces/aws-sentinel-connector-layer/",
 	// Set *default* container specific settings.json values on container create.
 	"settings": {
 		"python.pythonPath": "/usr/local/bin/python",
@@ -39,7 +39,7 @@
 	// "forwardPorts": [],
 	// Use 'postCreateCommand' to run commands after the container is created.
 	"remoteUser": "vscode",
-	"postCreateCommand": "pip install --user -r api/requirements.txt && pip install --user -r api/requirements_dev.txt",
+	"postCreateCommand": "pip install --user -r ./layer/requirements.txt && pip install --user -r ./layer/requirements_dev.txt",
 	"features": {
 		"ghcr.io/devcontainers/features/aws-cli:1": {
 			"version": "2.2.29"
