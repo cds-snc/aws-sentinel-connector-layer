@@ -2,8 +2,13 @@ import io
 import os
 import pytest
 import connector
+import logzero
+import json
 from unittest.mock import patch
 
+
+logzero.json()
+log = logzero.logger
 
 customer_id = "customer_id"
 log_type = "log_type"
@@ -295,6 +300,28 @@ def test_handle_log_succeeds_with_cloud_watch_log(mock_post_data):
     mock_post_data.return_value = True
     assert connector.handle_log(event) is True
     assert mock_post_data.call_count == 1
+
+
+@patch.dict(
+    os.environ,
+    {"CUSTOMER_ID": "foo", "SHARED_KEY": "foo"},
+    clear=True,
+)
+@patch("connector.boto3")
+@patch("connector.io")
+@patch("connector.post_data")
+def test_handle_log_succeeds_with_cloudquery_log(mock_post_data, mock_io, mock_boto3):
+    event = {
+        "Records": [
+            {"s3": {"bucket": {"name": "foo"}, "object": {"key": "cloudquery/aws_ecr_repositories/2023-04-16-22-03/f47fffa1-5335-4738-9546-8424b4b81061.json"}}}
+        ]
+    }
+    mock_io.BytesIO.return_value = load_fixture("cloudquery.jsonl")
+    mock_post_data.return_value = True
+    assert connector.handle_log(event) is True
+    assert mock_post_data.call_count == 1
+    for each in json.loads(mock_post_data.call_args[0][2]):
+        assert each["metadata_table"] == "aws_ecr_repositories"
 
 
 @patch.dict(
