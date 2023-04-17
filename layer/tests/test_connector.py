@@ -313,7 +313,14 @@ def test_handle_log_succeeds_with_cloud_watch_log(mock_post_data):
 def test_handle_log_succeeds_with_cloudquery_log(mock_post_data, mock_io, mock_boto3):
     event = {
         "Records": [
-            {"s3": {"bucket": {"name": "foo"}, "object": {"key": "cloudquery/aws_ecr_repositories/2023-04-16-22-03/f47fffa1-5335-4738-9546-8424b4b81061.json"}}}
+            {
+                "s3": {
+                    "bucket": {"name": "foo"},
+                    "object": {
+                        "key": "cloudquery/aws_ecr_repositories/2023-04-16-22-03/f47fffa1-5335-4738-9546-8424b4b81061.json"
+                    },
+                }
+            }
         ]
     }
     mock_io.BytesIO.return_value = load_fixture("cloudquery.jsonl")
