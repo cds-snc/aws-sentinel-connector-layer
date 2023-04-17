@@ -96,8 +96,9 @@ def handle_log(event):
             # CloudQuery log
             if "cloudquery" in record["s3"]["object"]["key"]:
                 lines = parse_cloudquery(rawbody)
+                table = {"metadata_table": record["s3"]["object"]["key"].split("/")[1]}
+                lines = [dict(line, **table) for line in lines]
                 log_type = "CloudQuery"
-
             if lines:
                 log.info(f"Posting {len(lines)} lines")
                 post_data(customer_id, shared_key, json.dumps(lines), log_type)
