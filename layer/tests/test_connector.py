@@ -322,7 +322,9 @@ def test_handle_log_succeeds_with_cloudquery_log(mock_post_data, mock_io, mock_b
     mock_post_data.return_value = True
     assert connector.handle_log(event) is True
     assert mock_post_data.call_count == 1
-    mock_post_data.assert_called_with('foo', 'foo', ANY, 'CloudQuery_aws_ecr_repositories')
+    mock_post_data.assert_called_with(
+        "foo", "foo", ANY, "CloudQuery_aws_ecr_repositories"
+    )
 
 
 @patch.dict(
