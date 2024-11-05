@@ -40,7 +40,6 @@ data "aws_iam_policy_document" "lambda_list_layers" {
     sid    = "ListLayers"
     effect = "Allow"
     actions = [
-      "lambda:GetFunction",
       "lambda:ListLayers",
       "lambda:ListLayerVersions"
     ]
