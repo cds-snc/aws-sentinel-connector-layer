@@ -2,7 +2,7 @@
 // https://github.com/microsoft/vscode-dev-containers/tree/v0.183.0/containers/python-3
 {
 	"name": "AWS Sentinel connection layer",
-	"image": "mcr.microsoft.com/vscode/devcontainers/python:3@sha256:0aa711e570b306c02946cdda67587ce8c65978dbb65691341cbcfd4854dfcfff",
+	"image": "mcr.microsoft.com/vscode/devcontainers/python:3@sha256:b4b3a3f0cf67b787061d77bc4b76cdd37f78cc6829050ed3f7dcb7269a99beb5",
 	"workspaceFolder": "/workspaces/aws-sentinel-connector-layer/",
 	// Set *default* container specific settings.json values on container create.
 	"customizations": {
