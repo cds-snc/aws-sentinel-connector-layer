@@ -11,7 +11,8 @@ resource "aws_lambda_layer_version" "lambda_layer" {
     "python3.12",
     "python3.13"
   ]
-  skip_destroy        = true
+
+  skip_destroy = true
 }
 
 resource "aws_lambda_layer_version_permission" "lambda_layer_permission" {
