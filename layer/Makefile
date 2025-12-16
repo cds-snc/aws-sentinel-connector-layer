@@ -3,8 +3,8 @@
 build:
 	rm -f ../terraform/layer.zip &&\
 	rm -rf package &&\
-	pip3 install --target ./package/python/lib/python3.9/site-packages -r requirements.txt &&\
-	cp connector.py package/python/lib/python3.9/site-packages/ &&\
+	pip3 install --target ./package/python -r requirements.txt &&\
+	cp connector.py package/python/ &&\
 	cd package &&\
 	zip -r ../../terraform/layer.zip .
 
