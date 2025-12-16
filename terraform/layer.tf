@@ -4,8 +4,16 @@ resource "aws_lambda_layer_version" "lambda_layer" {
 
   source_code_hash = filebase64sha256("layer.zip")
 
-  compatible_runtimes = ["python3.9"]
-  skip_destroy        = true
+  compatible_runtimes = [
+    "python3.9",
+    "python3.10",
+    "python3.11",
+    "python3.12",
+    "python3.13",
+    "python3.14"
+  ]
+
+  skip_destroy = true
 }
 
 resource "aws_lambda_layer_version_permission" "lambda_layer_permission" {

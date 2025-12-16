@@ -12,7 +12,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        folder: ["layer"]
+        python: ["3.9", "3.10", "3.11", "3.12", "3.13", "3.14"]
 
     steps:
       - name: Checkout
@@ -24,36 +24,36 @@ jobs:
         with:
           filters: |
             changes:
-              - '${{ matrix.folder }}/**'
+              - 'layer/**'
               - '.github/workflows/ci_code.yml'
 
+      - name: Exit if no changes
+        if: ${{ steps.filter.outputs.changes == 'false' }}
+        run: |
+          echo "No changes detected, skipping tests."
+          exit 0
+
       - name: Setup python
-        if: ${{ steps.filter.outputs.changes == 'true' }}
         uses: actions/setup-python@0b93645e9fea7318ecaed2b359559ac225c90a2b # v5.3.0
         with:
-          python-version: "3.9"
+          python-version: ${{ matrix.python }}
 
       - name: Install dev dependencies
-        if: ${{ steps.filter.outputs.changes == 'true' }}
-        working-directory: ${{ matrix.folder }}
+        working-directory: layer
         run: make install-dev
 
       - name: Install dependencies
-        if: ${{ steps.filter.outputs.changes == 'true' }}
-        working-directory: ${{ matrix.folder }}
+        working-directory: layer
         run: make install
 
       - name: Lint
-        if: ${{ steps.filter.outputs.changes == 'true' }}
-        working-directory: ${{ matrix.folder }}
+        working-directory: layer
         run: make lint-ci
 
       - name: Format
-        if: ${{ steps.filter.outputs.changes == 'true' }}
-        working-directory: ${{ matrix.folder }}
+        working-directory: layer
         run: make fmt-ci
 
       - name: Test
-        if: ${{ steps.filter.outputs.changes == 'true' }}
-        working-directory: ${{ matrix.folder }}
+        working-directory: layer
         run: make test
