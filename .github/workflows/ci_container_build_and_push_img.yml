@@ -44,7 +44,7 @@ jobs:
       - name: Build docker image
         working-directory: ./layer
         run: |
-          docker build -t $REGISTRY/$REPOSITORY:$GITHUB_SHA .
+          docker build --provenance=false -t $REGISTRY/$REPOSITORY:$GITHUB_SHA .
 
       - name: Push docker image to AWS ECR
         run: |
