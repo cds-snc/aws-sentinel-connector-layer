@@ -4,7 +4,6 @@ import pytest
 import connector
 from unittest.mock import ANY, patch
 
-
 customer_id = "customer_id"
 log_type = "log_type"
 shared_key = "dGVzdCBrZXk="
