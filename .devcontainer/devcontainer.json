@@ -1,28 +1,18 @@
 // For format details, see https://aka.ms/devcontainer.json. For config options, see the README at:
-// https://github.com/microsoft/vscode-dev-containers/tree/v0.183.0/containers/python-3
+// https://github.com/devcontainers/images/tree/main/src/python
 {
 	"name": "AWS Sentinel connection layer",
-	"image": "mcr.microsoft.com/vscode/devcontainers/python:3@sha256:1af48f9bd555f7972b14424def113c166dab9c5027bd9d9f5cc57704a42974f2",
+	"image": "mcr.microsoft.com/devcontainers/python:3.12",
 	"workspaceFolder": "/workspaces/aws-sentinel-connector-layer/",
 	// Set *default* container specific settings.json values on container create.
 	"customizations": {
 		"vscode": {
 			"settings": {
-				"python.pythonPath": "/usr/local/bin/python",
+				"python.defaultInterpreterPath": "/usr/local/bin/python",
 				"python.languageServer": "Pylance",
-				"python.linting.enabled": true,
-				"python.linting.pylintEnabled": true,
-				"python.formatting.autopep8Path": "/usr/local/py-utils/bin/autopep8",
-				"python.formatting.blackPath": "/usr/local/py-utils/bin/black",
-				"python.formatting.yapfPath": "/usr/local/py-utils/bin/yapf",
-				"python.linting.banditPath": "/usr/local/py-utils/bin/bandit",
-				"python.linting.flake8Path": "/usr/local/py-utils/bin/flake8",
-				"python.linting.mypyPath": "/usr/local/py-utils/bin/mypy",
-				"python.linting.pycodestylePath": "/usr/local/py-utils/bin/pycodestyle",
-				"python.linting.pydocstylePath": "/usr/local/py-utils/bin/pydocstyle",
-				"python.linting.pylintPath": "/usr/local/py-utils/bin/pylint",
 				"[python]": {
-					"editor.formatOnSave": true
+					"editor.formatOnSave": true,
+					"editor.defaultFormatter": "ms-python.black-formatter"
 				},
 				"[terraform]": {
 					"editor.formatOnSave": true
@@ -32,6 +22,9 @@
 			"extensions": [
 				"ms-python.python",
 				"ms-python.vscode-pylance",
+				"ms-python.black-formatter",
+				"ms-python.flake8",
+				"ms-python.pylint",
 				"redhat.vscode-yaml",
 				"timonwong.shellcheck",
 				"hashicorp.terraform",
@@ -46,7 +39,7 @@
 	"postCreateCommand": "pip install --user -r ./layer/requirements.txt && pip install --user -r ./layer/requirements_dev.txt",
 	"features": {
 		"ghcr.io/devcontainers/features/aws-cli:1": {
-			"version": "2.2.29"
+			"version": "latest"
 		},
 		"ghcr.io/devcontainers/features/terraform:1": {
 			"version": "latest",
