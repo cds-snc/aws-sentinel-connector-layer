@@ -11,39 +11,231 @@ import requests
 logzero.json()
 log = logzero.logger
 
+# LogsIngestionClient built on the first v2 delivery and reused across warm
+# invocations. Building it costs a token acquisition, so this is not free.
+_client = None
+
 
 def handle_log(event):
+    if not config_present():
+        return False
+
+    # SecurityHub events from EventBridge
+    if "source" in event and event["source"] == "aws.securityhub":
+        return deliver(event["detail"]["findings"], "AWSSecurityHub")
+
+    # If CloudWatch Subscription
+    if "awslogs" in event:
+        data = event["awslogs"]["data"]
+        payload = gzip.decompress(base64.b64decode(data))
+        return deliver(payload, "AWSCloudWatchLog")
+
+    # If application_log
+    if "application_log" in event:
+        log_type = os.environ.get("LOG_TYPE", "ApplicationLog")
+        return deliver(event["application_log"], log_type)
+
+    log.warning(f"Handler received unrecognised event: {event}")
+    return True
+
+
+# v1 (Data Collector API) and v2 (Logs Ingestion API) both live in this layer
+# version. Which one runs is decided per-Lambda by the env vars it carries, so
+# workstream D can move consumers one account at a time rather than all at once.
+# A consumer that sets neither DCE_ENDPOINT nor DCR_CONFIG behaves exactly as it
+# did before.
+def v2_enabled():
+    return bool(os.environ.get("DCE_ENDPOINT")) and bool(os.environ.get("DCR_CONFIG"))
+
+
+def config_present():
+    if v2_enabled():
+        return True
+
     customer_id = os.environ.get("CUSTOMER_ID", False)
-    log_type = os.environ.get("LOG_TYPE", "ApplicationLog")
     shared_key = os.environ.get("SHARED_KEY", False)
 
     if customer_id is False or shared_key is False:
         log.error("customer_id, log_type, or shared_key is missing")
         return False
 
-    # SecurityHub events from EventBridge
-    if "source" in event and event["source"] == "aws.securityhub":
-        line = event["detail"]["findings"]
-        log_type = "AWSSecurityHub"
-        post_data(customer_id, shared_key, json.dumps(line), log_type)
-        return True
-
-    # If CloudWatch Subscription
-    if "awslogs" in event:
-        data = event["awslogs"]["data"]
-        payload = gzip.decompress(base64.b64decode(data))
-        log_type = "AWSCloudWatchLog"
-        post_data(customer_id, shared_key, payload, log_type)
-        return True
-
-    # If application_log
-    if "application_log" in event:
-        line = event["application_log"]
-        post_data(customer_id, shared_key, json.dumps(line), log_type)
-        return True
-
-    log.warning(f"Handler received unrecognised event: {event}")
     return True
+
+
+def deliver(data, log_type):
+    if v2_enabled():
+        return deliver_v2(data, log_type)
+    return deliver_v1(data, log_type)
+
+
+def deliver_v1(data, log_type):
+    customer_id = os.environ.get("CUSTOMER_ID")
+    shared_key = os.environ.get("SHARED_KEY")
+    body = data if isinstance(data, (bytes, bytearray)) else json.dumps(data)
+    post_data(customer_id, shared_key, body, log_type)
+    return True
+
+
+def deliver_v2(data, log_type):
+    target = dcr_target(log_type)
+    if target is None:
+        return False
+
+    records = to_records(data, log_type)
+    if records is None:
+        return False
+
+    client = get_client(os.environ.get("DCE_ENDPOINT"))
+    upload_data(client, target["dcrImmutableId"], target["streamName"], records)
+    return True
+
+
+# DCR_CONFIG maps a log type to the DCR that accepts it, as one JSON env var.
+# Key names come verbatim from the `aws_dcr_config` Terraform output in
+# cds-snc/sentinel; do not rename them here.
+def dcr_target(log_type):
+    try:
+        config = json.loads(os.environ.get("DCR_CONFIG"))
+    except ValueError:
+        log.error("DCR_CONFIG is not valid JSON")
+        return None
+
+    target = config.get(log_type)
+    if not isinstance(target, dict):
+        log.error(f"No DCR_CONFIG entry for log type: {log_type}")
+        return None
+
+    if "dcrImmutableId" not in target or "streamName" not in target:
+        log.error(
+            f"DCR_CONFIG entry for {log_type} is missing dcrImmutableId or streamName"
+        )
+        return None
+
+    return target
+
+
+# The Logs Ingestion API takes a list of records matching the stream's declared
+# columns, not an opaque body. Fields the stream does not declare are dropped at
+# the stream declaration, before the DCR transform runs.
+def to_records(data, log_type):
+    if log_type == "AWSCloudWatchLog":
+        # A CloudWatch envelope has to be split into one record per logEvents[]
+        # entry, because DCR transforms cannot mv-expand. That split is B3.
+        # Refuse until it lands rather than post the envelope whole and lose
+        # every id/timestamp/message as undeclared fields.
+        log.error("CloudWatch v2 delivery needs the sender-side split (B3)")
+        return None
+
+    if isinstance(data, list):
+        return data
+
+    return [data]
+
+
+def get_client(endpoint):
+    global _client
+    if _client is None:
+        _client = create_client(
+            endpoint,
+            client_id=os.environ.get("AZURE_CLIENT_ID"),
+            tenant_id=os.environ.get("AZURE_TENANT_ID"),
+            client_secret=os.environ.get("AZURE_CLIENT_SECRET"),
+        )
+    return _client
+
+
+# Populate the env vars DefaultAzureCredential reads, for the client-secret flow.
+def configure_azure_env(client_id, tenant_id, client_secret):
+    if client_id:
+        os.environ["AZURE_CLIENT_ID"] = client_id
+    if tenant_id:
+        os.environ["AZURE_TENANT_ID"] = tenant_id
+    if client_secret:
+        os.environ["AZURE_CLIENT_SECRET"] = client_secret
+
+
+def cognito_configured():
+    return bool(os.environ.get("COGNITO_IDENTITY_POOL_ID")) and bool(
+        os.environ.get("COGNITO_DEVELOPER_PROVIDER_NAME")
+    )
+
+
+# Mint an OIDC token from Cognito for use as an Entra client assertion. The
+# Lambda's IAM role is the only credential involved; nothing is stored.
+#
+# The developer user identifier is the managed identity's client id, which keeps
+# Cognito's IdentityId mapping deterministic — and that IdentityId is the subject
+# the federated credential matches on.
+def get_cognito_assertion():
+    import boto3
+
+    response = boto3.client(
+        "cognito-identity"
+    ).get_open_id_token_for_developer_identity(
+        IdentityPoolId=os.environ["COGNITO_IDENTITY_POOL_ID"],
+        Logins={
+            os.environ["COGNITO_DEVELOPER_PROVIDER_NAME"]: os.environ["AZURE_CLIENT_ID"]
+        },
+    )
+
+    token = response.get("Token")
+    if not token:
+        raise RuntimeError("Cognito response did not include a Token")
+    return token
+
+
+def create_client(endpoint, client_id=None, tenant_id=None, client_secret=None):
+    # Imported here, not at module scope, and the placement matters.
+    # gc-signin-terraform builds its own layer.zip and rebuilds it by curling
+    # this file alone, without requirements.txt, so its package directory has no
+    # azure-*. A module-level import would raise on their cold start before
+    # v2_enabled() ever runs, breaking them on the v1 path this change is meant
+    # to leave alone. It also keeps the SDK off every v1 consumer's cold start.
+    from azure.identity import ClientAssertionCredential, DefaultAzureCredential
+
+    configure_azure_env(client_id, tenant_id, client_secret)
+
+    # A secret wins when one is present, so a consumer can be moved to v2 with a
+    # secret first and to federation later without a code change.
+    if client_secret:
+        credential = DefaultAzureCredential()
+    elif cognito_configured() and client_id and tenant_id:
+        # The assertion is passed as a callable, never a cached token: a
+        # Cognito token is valid 15 minutes by default while the Entra token
+        # lasts about an hour, so anything minted once at cold start is stale by
+        # the first refresh on a warm container. ClientAssertionCredential
+        # re-invokes func on every refresh, so each one mints a fresh token.
+        credential = ClientAssertionCredential(
+            tenant_id=tenant_id, client_id=client_id, func=get_cognito_assertion
+        )
+        log.info("Authenticating via Cognito federation, no stored secret")
+    else:
+        log.warning(
+            "Neither a client secret nor Cognito federation is configured; "
+            "DefaultAzureCredential will attempt its other credential types"
+        )
+        credential = DefaultAzureCredential()
+
+    from azure.monitor.ingestion import LogsIngestionClient
+
+    return LogsIngestionClient(endpoint=endpoint, credential=credential)
+
+
+def upload_data(client, dcr_immutable_id, stream_name, logs):
+    from azure.core.exceptions import HttpResponseError
+
+    if not logs:
+        log.warning("No data to send to Azure Monitor")
+        return False
+
+    try:
+        # The SDK chunks to the API's 1 MB-per-call limit itself.
+        client.upload(rule_id=dcr_immutable_id, stream_name=stream_name, logs=logs)
+        log.info(f"Uploaded {len(logs)} entries, stream: {stream_name}")
+        return True
+    except HttpResponseError as e:
+        log.error(f"Upload failed: {e}")
+        return False
 
 
 def build_signature(
