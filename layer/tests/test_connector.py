@@ -1,4 +1,6 @@
 import ast
+import base64
+import gzip
 import json
 import os
 import pathlib
@@ -265,15 +267,218 @@ def test_v2_application_log_uploads_one_record(mock_upload_data, mock_get_client
     assert logs == [{"foo": "bar"}]
 
 
-# Until B3 lands, refusing beats posting an envelope whose logEvents would be
-# dropped as undeclared fields.
+# --- B3: the CloudWatch sender-side split ------------------------------------
+
+# The columns Custom-AWSCloudWatchLog_v2_Input declares, and the whole contract.
+# A DCR drops undeclared fields at the stream declaration, before the transform
+# runs, so this list is the only protection against silent field loss.
+CLOUD_WATCH_STREAM_COLUMNS = {
+    "owner",
+    "logGroup",
+    "logStream",
+    "messageType",
+    "subscriptionFilters",
+    "id",
+    "timestamp",
+    "message",
+}
+
+
+def cloud_watch_event(log_events, **envelope):
+    """Build a subscription-filter event the way CloudWatch Logs delivers one."""
+    payload = {
+        "messageType": "DATA_MESSAGE",
+        "owner": "017790921725",
+        "logGroup": "/aws/lambda/Foo",
+        "logStream": "2022/11/22/[$LATEST]f211686138d549e89fa35a523691343b",
+        "subscriptionFilters": ["TESTING"],
+        "logEvents": log_events,
+    }
+    payload.update(envelope)
+    data = base64.b64encode(gzip.compress(json.dumps(payload).encode())).decode()
+    return {"awslogs": {"data": data}}
+
+
+def uploaded_records(mock_upload_data):
+    _client, _rule_id, _stream_name, logs = mock_upload_data.call_args[0]
+    return logs
+
+
+# The fan-out is the point: sampled traffic is 4.6 log events per envelope, so a
+# split that emitted one record per envelope would still look like a success.
 @patch.dict(os.environ, V2_ENV, clear=True)
 @patch("connector.get_client")
 @patch("connector.upload_data")
-def test_v2_cloud_watch_refuses_until_the_split_lands(
+def test_v2_cloud_watch_emits_one_record_per_log_event(
     mock_upload_data, mock_get_client
 ):
-    assert connector.handle_log(CLOUD_WATCH_EVENT) is False
+    assert connector.handle_log(CLOUD_WATCH_EVENT) is True
+
+    records = uploaded_records(mock_upload_data)
+    assert len(records) == 4
+    assert [r["id"] for r in records] == [
+        "37223079350734454524714662603489160618063152924421455873",
+        "37223079362442345753943239752795412711203542715061174279",
+        "37223079371496448304546672748258914329898777486489223181",
+        "37223079379747724028003003310627130090778671243701977107",
+    ]
+
+
+# Live traffic averages ~4.2 log events per envelope and peaks at 211 (measured
+# over 81,989 envelopes in 24 h). Pin the relationship as linear, above that
+# peak, so a cap or a slice — which every fixture-sized test above would still
+# pass — cannot truncate the large envelopes silently.
+@patch.dict(os.environ, V2_ENV, clear=True)
+@patch("connector.get_client")
+@patch("connector.upload_data")
+def test_v2_cloud_watch_fan_out_is_linear_in_log_events(
+    mock_upload_data, mock_get_client
+):
+    events = [
+        {"id": str(n), "timestamp": 1669140605812 + n, "message": f"line {n}"}
+        for n in range(250)
+    ]
+
+    assert connector.handle_log(cloud_watch_event(events)) is True
+
+    records = uploaded_records(mock_upload_data)
+    assert len(records) == 250
+    assert [r["id"] for r in records] == [str(n) for n in range(250)]
+
+
+@patch.dict(os.environ, V2_ENV, clear=True)
+@patch("connector.get_client")
+@patch("connector.upload_data")
+def test_v2_cloud_watch_uploads_to_the_cloud_watch_dcr(
+    mock_upload_data, mock_get_client
+):
+    assert connector.handle_log(CLOUD_WATCH_EVENT) is True
+
+    _client, rule_id, stream_name, _logs = mock_upload_data.call_args[0]
+    assert rule_id == "dcr-cloudwatch"
+    assert stream_name == "Custom-AWSCloudWatchLog_v2_Input"
+
+
+@patch.dict(os.environ, V2_ENV, clear=True)
+@patch("connector.get_client")
+@patch("connector.upload_data")
+def test_v2_cloud_watch_carries_the_envelope_fields_onto_every_record(
+    mock_upload_data, mock_get_client
+):
+    event = cloud_watch_event(
+        [
+            {"id": "1", "timestamp": 1669140605812, "message": "first"},
+            {"id": "2", "timestamp": 1669140606337, "message": "second"},
+        ]
+    )
+    assert connector.handle_log(event) is True
+
+    for record in uploaded_records(mock_upload_data):
+        assert record["owner"] == "017790921725"
+        assert record["logGroup"] == "/aws/lambda/Foo"
+        assert (
+            record["logStream"]
+            == "2022/11/22/[$LATEST]f211686138d549e89fa35a523691343b"
+        )
+        assert record["messageType"] == "DATA_MESSAGE"
+        assert record["subscriptionFilters"] == ["TESTING"]
+
+
+@patch.dict(os.environ, V2_ENV, clear=True)
+@patch("connector.get_client")
+@patch("connector.upload_data")
+def test_v2_cloud_watch_carries_the_event_fields(mock_upload_data, mock_get_client):
+    event = cloud_watch_event(
+        [{"id": "abc", "timestamp": 1669140605812, "message": "a line"}]
+    )
+    assert connector.handle_log(event) is True
+
+    (record,) = uploaded_records(mock_upload_data)
+    assert record["id"] == "abc"
+    # Epoch milliseconds, as a number — the DCR transform does the arithmetic
+    # conversion to TimeGenerated, so a pre-formatted string would break it.
+    assert record["timestamp"] == 1669140605812
+    assert isinstance(record["timestamp"], int)
+    assert record["message"] == "a line"
+
+
+# Do not copy gc-signin's split: theirs json.loads() each message and skips
+# anything non-JSON. gc-articles is ~99% of CloudWatch volume and its lines are
+# plain text, so every one of them would be dropped silently.
+@patch.dict(os.environ, V2_ENV, clear=True)
+@patch("connector.get_client")
+@patch("connector.upload_data")
+def test_v2_cloud_watch_keeps_plain_text_and_json_messages_alike(
+    mock_upload_data, mock_get_client
+):
+    plain = '127.0.0.1 -  11/Aug/2026:17:47:43 +0000 "GET /index.php" 302'
+    structured = '{"level":"info","msg":"hello"}'
+    event = cloud_watch_event(
+        [
+            {"id": "1", "timestamp": 1669140605812, "message": plain},
+            {"id": "2", "timestamp": 1669140606337, "message": structured},
+        ]
+    )
+    assert connector.handle_log(event) is True
+
+    records = uploaded_records(mock_upload_data)
+    assert [r["message"] for r in records] == [plain, structured]
+    # A JSON-looking line stays an unparsed string: the stream declares message
+    # as a string, and parsing it here would drop it as a type mismatch.
+    assert isinstance(records[1]["message"], str)
+
+
+@patch.dict(os.environ, V2_ENV, clear=True)
+@patch("connector.get_client")
+@patch("connector.upload_data")
+def test_v2_cloud_watch_records_declare_exactly_the_stream_columns(
+    mock_upload_data, mock_get_client
+):
+    assert connector.handle_log(CLOUD_WATCH_EVENT) is True
+
+    for record in uploaded_records(mock_upload_data):
+        assert set(record) == CLOUD_WATCH_STREAM_COLUMNS
+
+
+# CloudWatch sends a CONTROL_MESSAGE with no logEvents to validate a new
+# subscription filter. It is normal traffic, not an error — and building a client
+# for it would cost a token acquisition for nothing.
+@patch.dict(os.environ, V2_ENV, clear=True)
+@patch("connector.get_client")
+@patch("connector.upload_data")
+def test_v2_cloud_watch_control_message_uploads_nothing(
+    mock_upload_data, mock_get_client
+):
+    event = cloud_watch_event([], messageType="CONTROL_MESSAGE")
+
+    assert connector.handle_log(event) is True
+    assert mock_upload_data.call_count == 0
+    assert mock_get_client.call_count == 0
+
+
+@patch.dict(os.environ, V2_ENV, clear=True)
+@patch("connector.get_client")
+@patch("connector.upload_data")
+def test_v2_cloud_watch_rejects_a_payload_that_is_not_an_envelope(
+    mock_upload_data, mock_get_client
+):
+    data = base64.b64encode(gzip.compress(b"not json")).decode()
+
+    assert connector.handle_log({"awslogs": {"data": data}}) is False
+    assert mock_upload_data.call_count == 0
+
+
+# Valid JSON that is not an object: rejected rather than raising, so one bad
+# payload cannot fail an invocation that carries nothing else.
+@patch.dict(os.environ, V2_ENV, clear=True)
+@patch("connector.get_client")
+@patch("connector.upload_data")
+def test_v2_cloud_watch_rejects_json_that_is_not_an_object(
+    mock_upload_data, mock_get_client
+):
+    data = base64.b64encode(gzip.compress(b'["not", "an", "envelope"]')).decode()
+
+    assert connector.handle_log({"awslogs": {"data": data}}) is False
     assert mock_upload_data.call_count == 0
 
 

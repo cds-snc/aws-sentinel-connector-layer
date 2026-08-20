@@ -85,6 +85,13 @@ def deliver_v2(data, log_type):
     if records is None:
         return False
 
+    if not records:
+        # CloudWatch sends a CONTROL_MESSAGE with no logEvents to validate a new
+        # subscription filter. That is normal traffic, not an error — and
+        # building a client for it would cost a token acquisition for nothing.
+        log.info(f"Nothing to upload for log type: {log_type}")
+        return True
+
     client = get_client(os.environ.get("DCE_ENDPOINT"))
     upload_data(client, target["dcrImmutableId"], target["streamName"], records)
     return True
@@ -119,17 +126,64 @@ def dcr_target(log_type):
 # the stream declaration, before the DCR transform runs.
 def to_records(data, log_type):
     if log_type == "AWSCloudWatchLog":
-        # A CloudWatch envelope has to be split into one record per logEvents[]
-        # entry, because DCR transforms cannot mv-expand. That split is B3.
-        # Refuse until it lands rather than post the envelope whole and lose
-        # every id/timestamp/message as undeclared fields.
-        log.error("CloudWatch v2 delivery needs the sender-side split (B3)")
-        return None
+        return split_cloud_watch_envelope(data)
 
     if isinstance(data, list):
         return data
 
     return [data]
+
+
+# Custom-AWSCloudWatchLog_v2_Input declares exactly these eight columns, and the
+# declaration is the only protection against silent field loss: a DCR drops
+# anything undeclared before the transform runs, and raw_data cannot carry it
+# either, being pack(<declared columns>).
+CLOUD_WATCH_ENVELOPE_FIELDS = (
+    "owner",
+    "logGroup",
+    "logStream",
+    "messageType",
+    "subscriptionFilters",
+)
+CLOUD_WATCH_EVENT_FIELDS = ("id", "timestamp", "message")
+
+
+# One record per logEvents[] entry, each carrying the envelope fields. The split
+# has to happen here because a DCR transform cannot mv-expand, and posting the
+# envelope whole would drop every id/timestamp/message as undeclared.
+#
+# Two things this deliberately does not do, both of which would lose data:
+#
+#   - It does not json.loads() the message. gc-articles is ~99% of CloudWatch
+#     volume and its lines are plain text, so parsing-and-skipping — the shape of
+#     gc-signin's fork — would drop nearly everything, silently. message is
+#     declared a string; it stays whatever string CloudWatch sent.
+#   - It does not convert timestamp. It is epoch milliseconds and the stream
+#     declares it a long; the DCR transform does the arithmetic that makes it
+#     TimeGenerated, because unixtime_milliseconds_todatetime() is not in the
+#     subset of KQL a transform accepts.
+def split_cloud_watch_envelope(payload):
+    try:
+        envelope = json.loads(payload)
+    except ValueError:
+        log.error("CloudWatch payload is not a JSON envelope")
+        return None
+
+    if not isinstance(envelope, dict):
+        log.error("CloudWatch payload is not a JSON envelope")
+        return None
+
+    from_envelope = {
+        field: envelope.get(field) for field in CLOUD_WATCH_ENVELOPE_FIELDS
+    }
+
+    records = []
+    for event in envelope.get("logEvents") or []:
+        record = dict(from_envelope)
+        record.update({field: event.get(field) for field in CLOUD_WATCH_EVENT_FIELDS})
+        records.append(record)
+
+    return records
 
 
 def get_client(endpoint):
