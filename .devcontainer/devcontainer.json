@@ -2,7 +2,7 @@
 // https://github.com/devcontainers/images/tree/main/src/python
 {
 	"name": "AWS Sentinel connection layer",
-	"image": "mcr.microsoft.com/devcontainers/python:3.12",
+	"image": "mcr.microsoft.com/devcontainers/python:3.12@sha256:7ae01dce85c08cc6b6ca411d7d7051eb100d2274ee2702120c11236692b6204f",
 	"workspaceFolder": "/workspaces/aws-sentinel-connector-layer/",
 	// Set *default* container specific settings.json values on container create.
 	"customizations": {
