@@ -81,14 +81,25 @@ def deliver_v2(data, log_type):
     if target is None:
         return False
 
+    # to_records() has three outcomes, and each needs a different answer here:
+    #
+    #   None           the payload could not be turned into records at all
+    #   []             understood, but carrying nothing to send
+    #   [record, ...]  records to upload — the path that continues below
+    #
+    # This return value is the Lambda's success signal, so the first two cannot
+    # share one: a malformed payload is a failure, a CONTROL_MESSAGE is not.
     records = to_records(data, log_type)
     if records is None:
         return False
 
-    if not records:
+    if len(records) == 0:
         # CloudWatch sends a CONTROL_MESSAGE with no logEvents to validate a new
         # subscription filter. That is normal traffic, not an error — and
         # building a client for it would cost a token acquisition for nothing.
+        #
+        # len(), not `not records`, so this cannot quietly absorb the None case
+        # if the two checks are ever reordered — it would raise instead.
         log.info(f"Nothing to upload for log type: {log_type}")
         return True
 
