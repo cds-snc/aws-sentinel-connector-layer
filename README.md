@@ -56,6 +56,31 @@ so consumers can migrate one at a time instead of all at once.
 }
 ```
 
+#### CloudWatch under v2: one record per log event
+
+v1 posted the whole subscription envelope, so everything inside `logEvents` arrived as one opaque
+`logEvents_s` string that nothing could query without `parse_json`. Under v2 the layer splits the
+envelope **sender-side**: one record per `logEvents[]` entry, each carrying the envelope fields.
+
+| From the envelope, onto every record | From each `logEvents[]` entry |
+| --- | --- |
+| `owner`, `logGroup`, `logStream`, `messageType`, `subscriptionFilters` | `id`, `timestamp`, `message` |
+
+Those eight fields are exactly what `Custom-AWSCloudWatchLog_v2_Input` declares, and the declaration
+is the only protection against silent loss — a DCR drops undeclared fields before its transform
+runs. Three properties of the split are load-bearing:
+
+- **`message` stays an unparsed string.** Most CloudWatch volume is plain text, not JSON, so parsing
+  it and skipping what fails to parse would drop nearly all of it silently.
+- **`timestamp` stays epoch milliseconds.** The DCR transform converts it to `TimeGenerated`
+  arithmetically, because `unixtime_milliseconds_todatetime()` is not in the subset of KQL a
+  transform accepts.
+- **A `CONTROL_MESSAGE` envelope uploads nothing** and is not an error. CloudWatch sends one to
+  validate a new subscription filter; it carries no `logEvents`, and building a client for it would
+  cost a token acquisition for nothing.
+
+The split is gated to v2. On v1 the envelope is posted whole and byte-identical, exactly as before.
+
 #### v2 authentication
 
 Two flows, chosen by which variables are set. **A client secret wins when one is present**, so a
