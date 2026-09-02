@@ -33,6 +33,11 @@ You will need to add your Log Analytics Workspace Customer ID and Shared Key. AW
 Custom application logs are given the log type defined through the `var.log_type`. They also need to be nested inside a json
 object with the key, `application_log`. ex: `{'application_log': {'foo': 'bar'}}` for the layer code to forward it to Azure Sentinel.
 
+**`LOG_TYPE` applies to v1 only.** On v1 the `Log-Type` header *is* the destination table, so
+`var.log_type` still names it. On v2 the destination comes from `DCR_CONFIG`, keyed by log type, and
+`LOG_TYPE` selects nothing — an `application_log` event dispatches on the fixed key
+`ApplicationLog`, and is refused if `DCR_CONFIG` has no entry under it.
+
 ### Two ingestion APIs in one layer version
 
 Microsoft is retiring the Data Collector API. This layer supports both it and its replacement, the

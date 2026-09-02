@@ -32,11 +32,24 @@ def handle_log(event):
 
     # If application_log
     if "application_log" in event:
-        log_type = os.environ.get("LOG_TYPE", "ApplicationLog")
-        return deliver(event["application_log"], log_type)
+        return deliver(event["application_log"], application_log_type())
 
     log.warning(f"Handler received unrecognised event: {event}")
     return True
+
+
+# v2 keys DCR_CONFIG by log type, so the dispatch key must be the canonical name
+# and LOG_TYPE cannot redirect it. On v1 the Log-Type header *is* the destination
+# table, and LOG_TYPE is the only way to set it, so it still applies there: three
+# live application_log consumers ride that path and their table must not move.
+# Nothing sets it today — every sentinel_forwarder caller takes the module's
+# "ApplicationLog" default, and the one org-wide search hit that sets it is
+# commented out — but v1 is not the path to prove that on.
+def application_log_type():
+    if v2_enabled():
+        return "ApplicationLog"
+
+    return os.environ.get("LOG_TYPE", "ApplicationLog")
 
 
 # v1 (Data Collector API) and v2 (Logs Ingestion API) both live in this layer

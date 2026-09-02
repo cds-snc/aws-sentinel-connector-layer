@@ -482,13 +482,65 @@ def test_v2_cloud_watch_rejects_json_that_is_not_an_object(
     assert mock_upload_data.call_count == 0
 
 
-@patch.dict(os.environ, V2_ENV, clear=True)
+# A log type with no DCR_CONFIG entry cannot be delivered, so refuse rather than
+# guess a stream.
+@patch.dict(
+    os.environ,
+    {
+        "DCE_ENDPOINT": DCE_ENDPOINT,
+        "DCR_CONFIG": json.dumps(
+            {
+                "AWSSecurityHub": {
+                    "dcrImmutableId": "dcr-securityhub",
+                    "streamName": "Custom-AWSSecurityHub_v2_Input",
+                }
+            }
+        ),
+    },
+    clear=True,
+)
 @patch("connector.get_client")
 @patch("connector.upload_data")
 def test_v2_unmapped_log_type_does_not_upload(mock_upload_data, mock_get_client):
-    with patch.dict(os.environ, {"LOG_TYPE": "NotInTheMap"}):
-        assert connector.handle_log({"application_log": {"foo": "bar"}}) is False
+    assert connector.handle_log({"application_log": {"foo": "bar"}}) is False
     assert mock_upload_data.call_count == 0
+
+
+# --- B4: LOG_TYPE no longer decides v2 dispatch ------------------------------
+
+
+# Under v2 the destination comes from DCR_CONFIG, keyed by the log type the
+# handler knows it is dealing with. LOG_TYPE cannot redirect that.
+@patch.dict(os.environ, dict(V2_ENV, LOG_TYPE="Cartography"), clear=True)
+@patch("connector.get_client")
+@patch("connector.upload_data")
+def test_v2_application_log_ignores_log_type(mock_upload_data, mock_get_client):
+    assert connector.handle_log({"application_log": {"foo": "bar"}}) is True
+
+    _client, rule_id, stream_name, _logs = mock_upload_data.call_args[0]
+    assert rule_id == "dcr-application"
+    assert stream_name == "Custom-ApplicationLog_v2_Input"
+
+
+# v1's Log-Type header is the destination table name, and LOG_TYPE is the only
+# way to set it. Three live application_log consumers ride that path, so it keeps
+# working exactly as before — the same gating B3 applied to the split.
+@patch.dict(
+    os.environ,
+    {"CUSTOMER_ID": "foo", "SHARED_KEY": "foo", "LOG_TYPE": "Cartography"},
+    clear=True,
+)
+@patch("connector.post_data")
+def test_v1_application_log_still_honours_log_type(mock_post_data):
+    assert connector.handle_log({"application_log": {"foo": "bar"}}) is True
+    assert mock_post_data.call_args[0][3] == "Cartography"
+
+
+@patch.dict(os.environ, {"CUSTOMER_ID": "foo", "SHARED_KEY": "foo"}, clear=True)
+@patch("connector.post_data")
+def test_v1_application_log_defaults_the_log_type(mock_post_data):
+    assert connector.handle_log({"application_log": {"foo": "bar"}}) is True
+    assert mock_post_data.call_args[0][3] == "ApplicationLog"
 
 
 @patch.dict(
