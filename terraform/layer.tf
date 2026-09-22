@@ -4,12 +4,17 @@ resource "aws_lambda_layer_version" "lambda_layer" {
 
   source_code_hash = filebase64sha256("layer.zip")
 
+  # One entry, because the artifact genuinely supports one runtime: the wheels
+  # are built for a single CPython ABI (PYTHON_VERSION in ../layer/Makefile) and
+  # cpython-3XX extensions are not importable on any other version.
+  #
+  # This list used to name python3.10 through 3.14 while the zip contained
+  # cpython-312 extensions, so four of the five were false and the one consumer
+  # that attached it — on python3.13, which the sentinel_forwarder module
+  # hard-codes — failed on every invocation. Keep this in step with
+  # PYTHON_VERSION; the build's verify-abi target enforces the other half.
   compatible_runtimes = [
-    "python3.10",
-    "python3.11",
-    "python3.12",
-    "python3.13",
-    "python3.14"
+    "python3.13"
   ]
 
   skip_destroy = true
