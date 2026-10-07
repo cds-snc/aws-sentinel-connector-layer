@@ -262,6 +262,59 @@ def get_cognito_assertion():
     return token
 
 
+def hub_configured():
+    return bool(os.environ.get("SENTINEL_HUB_ROLE_ARN"))
+
+
+# The audience Entra expects on a federated client assertion. The hub role may
+# only mint tokens for this audience.
+HUB_TOKEN_AUDIENCE = "api://AzureADTokenExchange"
+
+
+# Mint a client assertion through the hub: assume the hub role, which may live in
+# another account, and ask STS for a JWT signed by that account's IAM outbound
+# identity federation. The token's subject is always the hub role's ARN, so one
+# federated credential on the managed identity covers every account. As with
+# Cognito, the Lambda's IAM role is the only credential involved.
+#
+# GetWebIdentityToken is not served by the global STS endpoint, so both calls go
+# to the regional one. The session name is the function name, so CloudTrail in
+# the hub account records which forwarder called.
+def get_hub_assertion():
+    import boto3
+
+    region = os.environ.get("AWS_REGION", "ca-central-1")
+    endpoint = f"https://sts.{region}.amazonaws.com"
+
+    session_name = os.environ.get("AWS_LAMBDA_FUNCTION_NAME", "sentinel-forwarder")
+    lambda_sts = boto3.client("sts", region_name=region, endpoint_url=endpoint)
+    hub_session = lambda_sts.assume_role(
+        RoleArn=os.environ["SENTINEL_HUB_ROLE_ARN"],
+        RoleSessionName=session_name[:64],
+    )
+    credentials = hub_session["Credentials"]
+
+    # 300 seconds is the API default and the most the hub role allows; the
+    # token is spent on the Entra exchange straight away.
+    response = boto3.client(
+        "sts",
+        region_name=region,
+        endpoint_url=endpoint,
+        aws_access_key_id=credentials["AccessKeyId"],
+        aws_secret_access_key=credentials["SecretAccessKey"],
+        aws_session_token=credentials["SessionToken"],
+    ).get_web_identity_token(
+        Audience=[HUB_TOKEN_AUDIENCE],
+        SigningAlgorithm="RS256",
+        DurationSeconds=300,
+    )
+
+    token = response.get("WebIdentityToken")
+    if not token:
+        raise RuntimeError("STS response did not include a WebIdentityToken")
+    return token
+
+
 def create_client(endpoint, client_id=None, tenant_id=None, client_secret=None):
     # Imported here, not at module scope, and the placement matters.
     # gc-signin-terraform builds its own layer.zip and rebuilds it by curling
@@ -274,9 +327,20 @@ def create_client(endpoint, client_id=None, tenant_id=None, client_secret=None):
     configure_azure_env(client_id, tenant_id, client_secret)
 
     # A secret wins when one is present, so a consumer can be moved to v2 with a
-    # secret first and to federation later without a code change.
+    # secret first and to federation later without a code change. The hub wins
+    # over Cognito, so a consumer moving to the hub keeps working before its
+    # Cognito inputs are removed.
     if client_secret:
         credential = DefaultAzureCredential()
+    elif hub_configured() and client_id and tenant_id:
+        # A callable for the same reason as Cognito below. The credential caches
+        # the Entra token, which lasted 24 hours for the hub identity when
+        # tested, so a warm container calls the hub about once a day rather
+        # than per invocation.
+        credential = ClientAssertionCredential(
+            tenant_id=tenant_id, client_id=client_id, func=get_hub_assertion
+        )
+        log.info("Authenticating via the Sentinel forwarder hub, no stored secret")
     elif cognito_configured() and client_id and tenant_id:
         # The assertion is passed as a callable, never a cached token: a
         # Cognito token is valid 15 minutes by default while the Entra token
@@ -289,8 +353,9 @@ def create_client(endpoint, client_id=None, tenant_id=None, client_secret=None):
         log.info("Authenticating via Cognito federation, no stored secret")
     else:
         log.warning(
-            "Neither a client secret nor Cognito federation is configured; "
-            "DefaultAzureCredential will attempt its other credential types"
+            "Neither a client secret, the hub nor Cognito federation is "
+            "configured; DefaultAzureCredential will attempt its other "
+            "credential types"
         )
         credential = DefaultAzureCredential()
 

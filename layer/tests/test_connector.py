@@ -669,6 +669,117 @@ def test_get_cognito_assertion_raises_without_a_token():
             pass
 
 
+HUB_ROLE_ARN = "arn:aws:iam::111111111111:role/sentinel-forwarder-hub"
+HUB_ENV = {
+    "AZURE_CLIENT_ID": "client",
+    "AZURE_TENANT_ID": "tenant",
+    "SENTINEL_HUB_ROLE_ARN": HUB_ROLE_ARN,
+    "AWS_REGION": "ca-central-1",
+    "AWS_LAMBDA_FUNCTION_NAME": "my-forwarder",
+}
+HUB_CREDENTIALS = {
+    "Credentials": {
+        "AccessKeyId": "AKIA-hub",
+        "SecretAccessKey": "secret-hub",
+        "SessionToken": "session-hub",
+    }
+}
+
+
+@patch.dict(os.environ, HUB_ENV, clear=True)
+@patch("azure.monitor.ingestion.LogsIngestionClient")
+@patch("azure.identity.ClientAssertionCredential")
+@patch("azure.identity.DefaultAzureCredential")
+def test_create_client_uses_the_hub(mock_default, mock_assertion, mock_lic):
+    connector.create_client(DCE_ENDPOINT, "client", "tenant", None)
+    assert mock_assertion.call_count == 1
+    assert mock_default.call_count == 0
+    assert mock_assertion.call_args[1]["func"] is connector.get_hub_assertion
+
+
+# A consumer moving to the hub may still carry its Cognito inputs for one apply;
+# the hub must win so the move does not depend on removing them first.
+@patch.dict(os.environ, dict(COGNITO_ENV, **HUB_ENV), clear=True)
+@patch("azure.monitor.ingestion.LogsIngestionClient")
+@patch("azure.identity.ClientAssertionCredential")
+@patch("azure.identity.DefaultAzureCredential")
+def test_create_client_prefers_the_hub_over_cognito(
+    mock_default, mock_assertion, mock_lic
+):
+    connector.create_client(DCE_ENDPOINT, "client", "tenant", None)
+    assert mock_assertion.call_args[1]["func"] is connector.get_hub_assertion
+
+
+@patch.dict(os.environ, dict(HUB_ENV, AZURE_CLIENT_SECRET="s"), clear=True)
+@patch("azure.monitor.ingestion.LogsIngestionClient")
+@patch("azure.identity.ClientAssertionCredential")
+@patch("azure.identity.DefaultAzureCredential")
+def test_create_client_prefers_the_secret_over_the_hub(
+    mock_default, mock_assertion, mock_lic
+):
+    connector.create_client(DCE_ENDPOINT, "client", "tenant", "s")
+    assert mock_default.call_count == 1
+    assert mock_assertion.call_count == 0
+
+
+@patch.dict(os.environ, HUB_ENV, clear=True)
+def test_get_hub_assertion_assumes_the_hub_then_mints_the_token():
+    with patch("boto3.client") as mock_boto:
+        sts = mock_boto.return_value
+        sts.assume_role.return_value = HUB_CREDENTIALS
+        sts.get_web_identity_token.return_value = {"WebIdentityToken": "the-jwt"}
+        assert connector.get_hub_assertion() == "the-jwt"
+
+    assume = sts.assume_role.call_args[1]
+    assert assume["RoleArn"] == HUB_ROLE_ARN
+    # The function name, so the hub account's CloudTrail shows which forwarder
+    # called.
+    assert assume["RoleSessionName"] == "my-forwarder"
+
+    mint = sts.get_web_identity_token.call_args[1]
+    assert mint["Audience"] == ["api://AzureADTokenExchange"]
+    assert mint["SigningAlgorithm"] == "RS256"
+    # The hub role denies anything longer than 300 seconds.
+    assert mint["DurationSeconds"] <= 300
+
+    first, second = mock_boto.call_args_list
+    # GetWebIdentityToken is not served by the global STS endpoint.
+    for call in (first, second):
+        assert call[1]["endpoint_url"] == "https://sts.ca-central-1.amazonaws.com"
+    # The token is minted with the hub session, not the Lambda's own role.
+    assert second[1]["aws_access_key_id"] == "AKIA-hub"
+    assert second[1]["aws_session_token"] == "session-hub"
+
+
+@patch.dict(os.environ, dict(HUB_ENV, AWS_LAMBDA_FUNCTION_NAME="f" * 80), clear=True)
+def test_get_hub_assertion_keeps_the_session_name_within_the_sts_limit():
+    with patch("boto3.client") as mock_boto:
+        mock_boto.return_value.assume_role.return_value = HUB_CREDENTIALS
+        mock_boto.return_value.get_web_identity_token.return_value = {
+            "WebIdentityToken": "the-jwt"
+        }
+        connector.get_hub_assertion()
+
+    assert len(mock_boto.return_value.assume_role.call_args[1]["RoleSessionName"]) == 64
+
+
+@patch.dict(os.environ, HUB_ENV, clear=True)
+def test_get_hub_assertion_raises_without_a_token():
+    with patch("boto3.client") as mock_boto:
+        mock_boto.return_value.assume_role.return_value = HUB_CREDENTIALS
+        mock_boto.return_value.get_web_identity_token.return_value = {}
+        try:
+            connector.get_hub_assertion()
+            assert False, "expected RuntimeError"
+        except RuntimeError:
+            pass
+
+
+@patch.dict(os.environ, {}, clear=True)
+def test_hub_not_configured_without_env():
+    assert connector.hub_configured() is False
+
+
 @patch.dict(os.environ, {}, clear=True)
 def test_cognito_not_configured_without_env():
     assert connector.cognito_configured() is False
