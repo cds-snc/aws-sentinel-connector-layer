@@ -1,4 +1,5 @@
 import base64
+import boto3
 import datetime
 import gzip
 import hashlib
@@ -245,8 +246,6 @@ def cognito_configured():
 # Cognito's IdentityId mapping deterministic — and that IdentityId is the subject
 # the federated credential matches on.
 def get_cognito_assertion():
-    import boto3
-
     response = boto3.client(
         "cognito-identity"
     ).get_open_id_token_for_developer_identity(
@@ -281,8 +280,6 @@ HUB_TOKEN_AUDIENCE = "api://AzureADTokenExchange"
 # to the regional one. The session name is the function name, so CloudTrail in
 # the hub account records which forwarder called.
 def get_hub_assertion():
-    import boto3
-
     region = os.environ.get("AWS_REGION", "ca-central-1")
     endpoint = f"https://sts.{region}.amazonaws.com"
 
