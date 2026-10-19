@@ -9,6 +9,15 @@ The code can handle the following types of logs
 - CloudWatch Logs (via a subscription filter)
 - Generic application json logs
 
+### Regions
+
+Each release is published in `ca-central-1` and `us-east-1`, from the same `layer.zip`. A Lambda can
+only use a layer in its own region, and WAF logs for CloudFront land in `us-east-1`. Version numbers
+are counted per region, so the same release has a different version number in each:
+
+- `arn:aws:lambda:ca-central-1:283582579564:layer:aws-sentinel-connector-layer:<version>`
+- `arn:aws:lambda:us-east-1:283582579564:layer:aws-sentinel-connector-layer:<version>`
+
 ### Removed: the S3 log types
 
 The layer used to parse CloudTrail, Load balancer, VPC flow, VPC DNS query, WAF ACL, GuardDuty and
