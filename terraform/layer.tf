@@ -41,3 +41,36 @@ resource "aws_lambda_layer_version_permission" "lambda_layer_permission" {
 
   skip_destroy = true
 }
+
+# The same artifact, published in us-east-1 for forwarders that must run there.
+# A Lambda can only attach a layer from its own region, and WAF logs for
+# CloudFront land in us-east-1, so a CloudFront WAF forwarder cannot use the
+# ca-central-1 layer. Version numbers are counted per region, so this layer's
+# versions do not match the ca-central-1 ones.
+resource "aws_lambda_layer_version" "lambda_layer_us_east_1" {
+  provider = aws.us-east-1
+
+  filename   = "layer.zip"
+  layer_name = "aws-sentinel-connector-layer"
+
+  source_code_hash = filebase64sha256("layer.zip")
+
+  # Keep in step with lambda_layer above.
+  compatible_runtimes = [
+    "python3.13"
+  ]
+
+  skip_destroy = true
+}
+
+resource "aws_lambda_layer_version_permission" "lambda_layer_permission_us_east_1" {
+  provider = aws.us-east-1
+
+  layer_name     = aws_lambda_layer_version.lambda_layer_us_east_1.layer_arn
+  version_number = aws_lambda_layer_version.lambda_layer_us_east_1.version
+  principal      = "*"
+  action         = "lambda:GetLayerVersion"
+  statement_id   = "shared-layer-permission"
+
+  skip_destroy = true
+}
