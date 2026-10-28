@@ -98,22 +98,28 @@ The split is gated to v2. On v1 the envelope is posted whole and byte-identical,
 #### v2 authentication
 
 Two flows, chosen by which variables are set. **A client secret wins when one is present**, so a
-consumer can move to v2 with a secret first and to federation later without a code change.
+consumer can move to v2 with a secret first and to the hub later without a code change.
 
-| | Client secret | Cognito federation (no stored secret) |
+| | Client secret | Sentinel forwarder hub (no stored secret) |
 | --- | --- | --- |
-| Variables | `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, `AZURE_CLIENT_SECRET` | `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, `COGNITO_IDENTITY_POOL_ID`, `COGNITO_DEVELOPER_PROVIDER_NAME` |
+| Variables | `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, `AZURE_CLIENT_SECRET` | `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, `SENTINEL_HUB_ROLE_ARN` |
 | Credential | `DefaultAzureCredential` | `ClientAssertionCredential` |
 
-Under federation the Lambda's IAM role is the only credential. It calls
-`cognito-identity:GetOpenIdTokenForDeveloperIdentity`, and the resulting OIDC JWT is presented to
-Entra as a client assertion for a user-assigned managed identity whose federated credential trusts
-`https://cognito-identity.amazonaws.com`. `AZURE_CLIENT_ID` doubles as the Cognito developer user
-identifier, which keeps the `IdentityId` — the federated credential's subject — stable.
+Through the hub the Lambda's IAM role is the only credential. It assumes the hub role named by
+`SENTINEL_HUB_ROLE_ARN`, usually in another account, and calls `sts:GetWebIdentityToken` there. That
+account's IAM outbound identity federation signs a JWT whose subject is the hub role's ARN, and the
+JWT is presented to Entra as a client assertion for a user-assigned managed identity whose federated
+credential trusts that issuer and subject. One credential covers every account allowed to assume the
+hub role. Both STS calls use the regional endpoint, and the session name is the function name, so the
+hub account's CloudTrail records which forwarder called. Needs layer version 273 or later.
 
-The token is fetched through a callable that runs on every credential refresh, never cached: a
-Cognito token is valid for 15 minutes by default while the Entra token lasts about an hour, so an
-assertion minted once at cold start would be stale by the first refresh on a warm container.
+The token is fetched through a callable that runs on every credential refresh, never cached: the hub
+token is valid for 5 minutes, so an assertion minted once at cold start would be stale by the first
+refresh on a warm container.
+
+Cognito federation (`COGNITO_IDENTITY_POOL_ID`, `COGNITO_DEVELOPER_PROVIDER_NAME`) was removed once
+every consumer had moved to the hub. A Lambda that still sets only those variables falls through to
+`DefaultAzureCredential`, as below.
 
 With neither flow configured, `DefaultAzureCredential` falls through to its remaining credential
 types, and none of them authenticate inside a Lambda — the failure surfaces at token acquisition on

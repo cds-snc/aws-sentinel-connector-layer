@@ -594,43 +594,6 @@ def test_configure_azure_env_without_secret_sets_no_secret():
     assert "AZURE_CLIENT_SECRET" not in os.environ
 
 
-COGNITO_ENV = {
-    "AZURE_CLIENT_ID": "client",
-    "AZURE_TENANT_ID": "tenant",
-    "COGNITO_IDENTITY_POOL_ID": "ca-central-1:00000000-0000-0000-0000-000000000000",
-    "COGNITO_DEVELOPER_PROVIDER_NAME": "azure-sentinel-access",
-}
-
-
-# A secret wins when present, so a consumer can move to v2 with a secret first
-# and to federation later without a code change.
-@patch.dict(os.environ, dict(COGNITO_ENV, AZURE_CLIENT_SECRET="s"), clear=True)
-@patch("azure.monitor.ingestion.LogsIngestionClient")
-@patch("azure.identity.ClientAssertionCredential")
-@patch("azure.identity.DefaultAzureCredential")
-def test_create_client_prefers_the_secret(mock_default, mock_assertion, mock_lic):
-    connector.create_client(DCE_ENDPOINT, "client", "tenant", "s")
-    assert mock_default.call_count == 1
-    assert mock_assertion.call_count == 0
-
-
-@patch.dict(os.environ, COGNITO_ENV, clear=True)
-@patch("azure.monitor.ingestion.LogsIngestionClient")
-@patch("azure.identity.ClientAssertionCredential")
-@patch("azure.identity.DefaultAzureCredential")
-def test_create_client_federates_when_no_secret(mock_default, mock_assertion, mock_lic):
-    connector.create_client(DCE_ENDPOINT, "client", "tenant", None)
-    assert mock_assertion.call_count == 1
-    assert mock_default.call_count == 0
-
-    kwargs = mock_assertion.call_args[1]
-    assert kwargs["tenant_id"] == "tenant"
-    assert kwargs["client_id"] == "client"
-    # The callable, not a token: it is re-invoked on every refresh, so a Cognito
-    # token minted at cold start cannot go stale on a warm container.
-    assert kwargs["func"] is connector.get_cognito_assertion
-
-
 @patch.dict(os.environ, {"AZURE_CLIENT_ID": "client"}, clear=True)
 @patch("azure.monitor.ingestion.LogsIngestionClient")
 @patch("azure.identity.ClientAssertionCredential")
@@ -639,34 +602,6 @@ def test_create_client_falls_back_with_neither(mock_default, mock_assertion, moc
     connector.create_client(DCE_ENDPOINT, "client", None, None)
     assert mock_default.call_count == 1
     assert mock_assertion.call_count == 0
-
-
-@patch.dict(os.environ, COGNITO_ENV, clear=True)
-def test_get_cognito_assertion_returns_the_token():
-    with patch("boto3.client") as mock_boto:
-        mock_boto.return_value.get_open_id_token_for_developer_identity.return_value = {
-            "Token": "the-jwt"
-        }
-        assert connector.get_cognito_assertion() == "the-jwt"
-
-    call = mock_boto.return_value.get_open_id_token_for_developer_identity.call_args[1]
-    assert call["IdentityPoolId"] == COGNITO_ENV["COGNITO_IDENTITY_POOL_ID"]
-    # The developer user identifier is the managed identity's client id, which
-    # keeps Cognito's IdentityId — the federated credential's subject — stable.
-    assert call["Logins"] == {"azure-sentinel-access": "client"}
-
-
-@patch.dict(os.environ, COGNITO_ENV, clear=True)
-def test_get_cognito_assertion_raises_without_a_token():
-    with patch("boto3.client") as mock_boto:
-        mock_boto.return_value.get_open_id_token_for_developer_identity.return_value = (
-            {}
-        )
-        try:
-            connector.get_cognito_assertion()
-            assert False, "expected RuntimeError"
-        except RuntimeError:
-            pass
 
 
 HUB_ROLE_ARN = "arn:aws:iam::111111111111:role/sentinel-forwarder-hub"
@@ -694,22 +629,40 @@ def test_create_client_uses_the_hub(mock_default, mock_assertion, mock_lic):
     connector.create_client(DCE_ENDPOINT, "client", "tenant", None)
     assert mock_assertion.call_count == 1
     assert mock_default.call_count == 0
-    assert mock_assertion.call_args[1]["func"] is connector.get_hub_assertion
+
+    kwargs = mock_assertion.call_args[1]
+    assert kwargs["tenant_id"] == "tenant"
+    assert kwargs["client_id"] == "client"
+    # The callable, not a token: it is re-invoked on every refresh, so a hub
+    # token minted at cold start cannot go stale on a warm container.
+    assert kwargs["func"] is connector.get_hub_assertion
 
 
-# A consumer moving to the hub may still carry its Cognito inputs for one apply;
-# the hub must win so the move does not depend on removing them first.
-@patch.dict(os.environ, dict(COGNITO_ENV, **HUB_ENV), clear=True)
+# Cognito federation was removed once every consumer had moved to the hub. A
+# Lambda still carrying only the Cognito variables no longer federates.
+@patch.dict(
+    os.environ,
+    {
+        "AZURE_CLIENT_ID": "client",
+        "AZURE_TENANT_ID": "tenant",
+        "COGNITO_IDENTITY_POOL_ID": "ca-central-1:00000000-0000-0000-0000-000000000000",
+        "COGNITO_DEVELOPER_PROVIDER_NAME": "azure-sentinel-access",
+    },
+    clear=True,
+)
 @patch("azure.monitor.ingestion.LogsIngestionClient")
 @patch("azure.identity.ClientAssertionCredential")
 @patch("azure.identity.DefaultAzureCredential")
-def test_create_client_prefers_the_hub_over_cognito(
+def test_create_client_ignores_cognito_variables(
     mock_default, mock_assertion, mock_lic
 ):
     connector.create_client(DCE_ENDPOINT, "client", "tenant", None)
-    assert mock_assertion.call_args[1]["func"] is connector.get_hub_assertion
+    assert mock_default.call_count == 1
+    assert mock_assertion.call_count == 0
 
 
+# A secret wins when present, so a consumer can move to v2 with a secret first
+# and to the hub later without a code change.
 @patch.dict(os.environ, dict(HUB_ENV, AZURE_CLIENT_SECRET="s"), clear=True)
 @patch("azure.monitor.ingestion.LogsIngestionClient")
 @patch("azure.identity.ClientAssertionCredential")
@@ -778,16 +731,6 @@ def test_get_hub_assertion_raises_without_a_token():
 @patch.dict(os.environ, {}, clear=True)
 def test_hub_not_configured_without_env():
     assert connector.hub_configured() is False
-
-
-@patch.dict(os.environ, {}, clear=True)
-def test_cognito_not_configured_without_env():
-    assert connector.cognito_configured() is False
-
-
-@patch.dict(os.environ, COGNITO_ENV, clear=True)
-def test_cognito_configured_with_env():
-    assert connector.cognito_configured() is True
 
 
 def test_upload_data_success():

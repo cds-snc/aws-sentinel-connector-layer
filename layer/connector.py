@@ -233,34 +233,6 @@ def configure_azure_env(client_id, tenant_id, client_secret):
         os.environ["AZURE_CLIENT_SECRET"] = client_secret
 
 
-def cognito_configured():
-    return bool(os.environ.get("COGNITO_IDENTITY_POOL_ID")) and bool(
-        os.environ.get("COGNITO_DEVELOPER_PROVIDER_NAME")
-    )
-
-
-# Mint an OIDC token from Cognito for use as an Entra client assertion. The
-# Lambda's IAM role is the only credential involved; nothing is stored.
-#
-# The developer user identifier is the managed identity's client id, which keeps
-# Cognito's IdentityId mapping deterministic — and that IdentityId is the subject
-# the federated credential matches on.
-def get_cognito_assertion():
-    response = boto3.client(
-        "cognito-identity"
-    ).get_open_id_token_for_developer_identity(
-        IdentityPoolId=os.environ["COGNITO_IDENTITY_POOL_ID"],
-        Logins={
-            os.environ["COGNITO_DEVELOPER_PROVIDER_NAME"]: os.environ["AZURE_CLIENT_ID"]
-        },
-    )
-
-    token = response.get("Token")
-    if not token:
-        raise RuntimeError("Cognito response did not include a Token")
-    return token
-
-
 def hub_configured():
     return bool(os.environ.get("SENTINEL_HUB_ROLE_ARN"))
 
@@ -273,8 +245,8 @@ HUB_TOKEN_AUDIENCE = "api://AzureADTokenExchange"
 # Mint a client assertion through the hub: assume the hub role, which may live in
 # another account, and ask STS for a JWT signed by that account's IAM outbound
 # identity federation. The token's subject is always the hub role's ARN, so one
-# federated credential on the managed identity covers every account. As with
-# Cognito, the Lambda's IAM role is the only credential involved.
+# federated credential on the managed identity covers every account. The
+# Lambda's IAM role is the only credential involved; nothing is stored.
 #
 # GetWebIdentityToken is not served by the global STS endpoint, so both calls go
 # to the regional one. The session name is the function name, so CloudTrail in
@@ -324,13 +296,14 @@ def create_client(endpoint, client_id=None, tenant_id=None, client_secret=None):
     configure_azure_env(client_id, tenant_id, client_secret)
 
     # A secret wins when one is present, so a consumer can be moved to v2 with a
-    # secret first and to federation later without a code change. The hub wins
-    # over Cognito, so a consumer moving to the hub keeps working before its
-    # Cognito inputs are removed.
+    # secret first and to the hub later without a code change.
     if client_secret:
         credential = DefaultAzureCredential()
     elif hub_configured() and client_id and tenant_id:
-        # A callable for the same reason as Cognito below. The credential caches
+        # The assertion is passed as a callable, never a cached token: the hub
+        # token is valid 5 minutes, so anything minted once at cold start is
+        # stale by the first refresh on a warm container.
+        # ClientAssertionCredential re-invokes func on every refresh. It caches
         # the Entra token, which lasted 24 hours for the hub identity when
         # tested, so a warm container calls the hub about once a day rather
         # than per invocation.
@@ -338,21 +311,10 @@ def create_client(endpoint, client_id=None, tenant_id=None, client_secret=None):
             tenant_id=tenant_id, client_id=client_id, func=get_hub_assertion
         )
         log.info("Authenticating via the Sentinel forwarder hub, no stored secret")
-    elif cognito_configured() and client_id and tenant_id:
-        # The assertion is passed as a callable, never a cached token: a
-        # Cognito token is valid 15 minutes by default while the Entra token
-        # lasts about an hour, so anything minted once at cold start is stale by
-        # the first refresh on a warm container. ClientAssertionCredential
-        # re-invokes func on every refresh, so each one mints a fresh token.
-        credential = ClientAssertionCredential(
-            tenant_id=tenant_id, client_id=client_id, func=get_cognito_assertion
-        )
-        log.info("Authenticating via Cognito federation, no stored secret")
     else:
         log.warning(
-            "Neither a client secret, the hub nor Cognito federation is "
-            "configured; DefaultAzureCredential will attempt its other "
-            "credential types"
+            "Neither a client secret nor the hub is configured; "
+            "DefaultAzureCredential will attempt its other credential types"
         )
         credential = DefaultAzureCredential()
 
