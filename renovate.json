@@ -2,5 +2,19 @@
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": [
     "local>cds-snc/renovate-config"
+  ],
+  "customManagers": [
+    {
+      "customType": "regex",
+      "fileMatch": [
+        "^\\.github/workflows/scripts/run(?:_bandit_scan|-shellcheck)\\.sh$"
+      ],
+      "matchStrings": [
+        "(?<depName>[a-z0-9][a-z0-9./-]*):(?<currentValue>[a-zA-Z0-9_.-]+)@(?<currentDigest>sha256:[a-f0-9]{64})"
+      ],
+      "datasourceTemplate": "docker",
+      "versioningTemplate": "docker",
+      "depTypeTemplate": "image"
+    }
   ]
 }
