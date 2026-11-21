@@ -1,3 +1,3 @@
 #!/bin/bash
 
-docker run --rm -v "$PWD:/mnt:ro" koalaman/shellcheck:v0.7.1@sha256:bc09eaa591263367f2531eaabafcbeaaf56f6f87aa4c0f736c40bbbbf6f33ff7 -P ./bin/ -x ./.github/workflows/scripts/*.sh
+docker run --rm -v "$PWD:/mnt:ro" koalaman/shellcheck:v0.11.0@sha256:61862eba1fcf09a484ebcc6feea46f1782532571a34ed51fedf90dd25f925a8d -P ./bin/ -x ./.github/workflows/scripts/*.sh
